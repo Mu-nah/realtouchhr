@@ -33,7 +33,7 @@ export default function LandingPage() {
             localStorage.setItem('demo_tour_active', 'true');
             // Refresh auth context
             await refresh?.();
-            toast.success('Demo environment ready — your tour starts now');
+            toast.success('Demo ready. Starting your tour.');
             // Hard navigation so AuthContext re-checks /api/auth/me with fresh token
             window.location.href = '/dashboard';
         } catch (err) {
@@ -77,17 +77,17 @@ export default function LandingPage() {
 
                 <div className="relative">
                     <Badge className="mb-6 bg-white/10 hover:bg-white/15 border border-white/20 backdrop-blur" data-testid="landing-hero-badge">
-                        <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Tax year 2025-26 ready · HMRC RTI · UKVI
+                        <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Tax year 2025-26 ready. HMRC RTI. UKVI.
                     </Badge>
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight max-w-4xl leading-[1.05]" data-testid="landing-hero-title">
-                        UK Payroll, HR & Compliance —{' '}
+                        UK Payroll, HR &{' '}
                         <span className="bg-gradient-to-r from-indigo-300 via-purple-300 to-fuchsia-300 bg-clip-text text-transparent">
-                            on autopilot
+                            Compliance
                         </span>
                     </h1>
                     <p className="mt-6 text-lg md:text-xl text-white/70 max-w-2xl leading-relaxed">
-                        From RTI submissions to UKVI sponsor licence monitoring, statutory pay calculators
-                        and Stripe-powered billing — RealtouchHR replaces a stack of spreadsheets and
+                        RTI submissions, UKVI sponsor licence monitoring, statutory pay calculators
+                        and payroll all in one place. RealtouchHR replaces spreadsheets and
                         consultants for under £39/month.
                     </p>
 
@@ -114,7 +114,7 @@ export default function LandingPage() {
                         </Link>
                     </div>
                     <p className="mt-3 text-xs text-white/50">
-                        ⚡ The demo seeds 6 fake employees + a sample pay run + UKVI alerts. Sandbox accounts auto-expire after 24 hours.
+                        The demo includes 6 sample employees, a pay run and UKVI alerts. Accounts expire after 24 hours.
                     </p>
 
                     {/* Trust strip */}
@@ -145,12 +145,12 @@ export default function LandingPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                     {[
-                        { icon: Users, title: 'Core HR + Self-Service', desc: 'Employee records, leave, documents, onboarding wizard. RBAC + audit log baked in.' },
-                        { icon: PoundSterling, title: 'Guided Payroll Flow', desc: 'PAYE, NI, pension, student loans (Plans 1/2/4/5 + Postgrad). Payslip PDF and HMRC RTI/FPS submission included.' },
-                        { icon: ShieldCheck, title: 'UKVI Sponsor Licence', desc: 'Right-to-Work checks, CoS register, visa expiry alerts, salary threshold monitoring.' },
-                        { icon: HeartPulse, title: 'Statutory Payments', desc: 'SSP / SMP / SPP / ShPP / SAP calculators with 92%/103% recovery built in.' },
-                        { icon: FileCheck2, title: 'P45 / P60 / P11D', desc: 'Auto-generated tax documents on offboarding, on-demand, or year-end.' },
-                        { icon: Cpu, title: 'AI Copilot', desc: 'GPT-4o powered assistant answers payroll, compliance and HR questions in plain English.' },
+                        { icon: Users, title: 'HR and Self-Service', desc: 'Employee records, leave, documents and onboarding. Role-based access and a full audit log included.' },
+                        { icon: PoundSterling, title: 'Payroll', desc: 'PAYE, NI, pension and student loans (Plans 1/2/4/5 + Postgrad). Payslip PDFs and HMRC RTI/FPS submission.' },
+                        { icon: ShieldCheck, title: 'UKVI Sponsor Licence', desc: 'Right-to-Work checks, CoS register, visa expiry tracking and salary threshold monitoring.' },
+                        { icon: HeartPulse, title: 'Statutory Payments', desc: 'SSP, SMP, SPP, ShPP and SAP calculators with 92% and 103% recovery rates.' },
+                        { icon: FileCheck2, title: 'P45, P60 and P11D', desc: 'Tax documents generated automatically at offboarding, on demand or at year end.' },
+                        { icon: Cpu, title: 'HR Assistant', desc: 'Ask payroll, compliance or HR questions in plain English and get accurate answers.' },
                     ].map((f, i) => (
                         <Card
                             key={i}
@@ -179,7 +179,7 @@ export default function LandingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto">
                     {[
                         { name: 'Starter', price: 39, employees: '10', features: ['Core HR + Payroll', 'HMRC RTI', 'UKVI checks', 'Email support'] },
-                        { name: 'Professional', price: 59, employees: '50', featured: true, features: ['Everything in Starter', 'Statutory pay automation', 'AI Copilot', 'Priority chat support'] },
+                        { name: 'Professional', price: 59, employees: '50', featured: true, features: ['Everything in Starter', 'Statutory pay automation', 'HR Assistant', 'Priority chat support'] },
                         { name: 'Enterprise', price: 149, employees: 'Unlimited', features: ['Multi-entity', 'SCIM/SAML SSO', 'Dedicated CSM', 'Sponsor licence health'] },
                     ].map((p) => (
                         <Card
@@ -228,14 +228,14 @@ export default function LandingPage() {
             <section id="compliance" className="max-w-7xl mx-auto px-6 py-20 border-t border-white/5">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
                     <div>
-                        <Badge className="mb-3 bg-white/10 border border-white/20">Compliance Autopilot</Badge>
+                        <Badge className="mb-3 bg-white/10 border border-white/20">Stay Compliant</Badge>
                         <h2 className="text-4xl font-bold leading-tight">
-                            HMRC, UKVI &amp; GDPR — handled before you noticed.
+                            HMRC, UKVI and GDPR. We keep track so you don't have to.
                         </h2>
                         <p className="mt-4 text-white/70 leading-relaxed">
-                            Our compliance score updates in real time as your team grows. Visa expiries, sponsor
-                            licence ratings, statutory pay deadlines, RTI cut-offs — all tracked, scored, and queued
-                            before they become problems.
+                            Your compliance score updates in real time as your team changes. Visa expiries,
+                            sponsor licence ratings, statutory pay deadlines and RTI cut-offs are all
+                            tracked and flagged before they become problems.
                         </p>
                         <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
                             {[
@@ -289,11 +289,11 @@ export default function LandingPage() {
                         <div className="max-w-2xl">
                             <Star className="w-7 h-7 text-yellow-300 mb-4" />
                             <h2 className="text-3xl md:text-5xl font-bold leading-tight">
-                                See it in action — without giving us your email.
+                                See it in action. No email needed.
                             </h2>
                             <p className="mt-4 text-white/80 text-lg">
-                                Click below and you're inside a real RealtouchHR tenant in under 5 seconds.
-                                Sample employees, draft pay run, UKVI alerts, Stripe checkout — explore the lot.
+                                Click below and you are inside a live RealtouchHR account in under 5 seconds.
+                                Sample employees, a draft pay run, UKVI alerts and billing — explore everything.
                             </p>
                             <Button
                                 size="lg"

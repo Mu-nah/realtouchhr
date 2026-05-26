@@ -70,7 +70,7 @@ export default function LoginPage() {
                 <div className="space-y-8">
                     <div>
                         <h1 className="text-4xl lg:text-5xl font-bold font-['Plus_Jakarta_Sans'] leading-tight">
-                            Compliance Confidence<br />for UK Businesses
+                            UK Payroll, HR<br />and Compliance
                         </h1>
                         <p className="mt-4 text-lg text-white/80 max-w-md">
                             The HR & Payroll platform that gives you peace of mind with automated compliance checks and audit-ready records.
