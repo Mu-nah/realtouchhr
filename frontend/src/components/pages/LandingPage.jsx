@@ -154,14 +154,14 @@ export default function LandingPage() {
                     ].map((f, i) => (
                         <Card
                             key={i}
-                            className="bg-white/5 border-white/10 backdrop-blur hover:bg-white/[0.07] transition group"
+                            className="bg-white/[0.12] border-white/25 backdrop-blur hover:bg-white/[0.18] transition group"
                         >
                             <CardContent className="p-6">
-                                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center mb-4 group-hover:scale-105 transition">
-                                    <f.icon className="w-5 h-5 text-indigo-300" />
+                                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-indigo-500/50 to-purple-500/50 border border-white/20 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                                    <f.icon className="w-5 h-5 text-white" />
                                 </div>
-                                <h3 className="text-xl font-semibold">{f.title}</h3>
-                                <p className="text-sm text-white/60 mt-2 leading-relaxed">{f.desc}</p>
+                                <h3 className="text-xl font-semibold text-white">{f.title}</h3>
+                                <p className="text-sm text-white/80 mt-2 leading-relaxed">{f.desc}</p>
                             </CardContent>
                         </Card>
                     ))}

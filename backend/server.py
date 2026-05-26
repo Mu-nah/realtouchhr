@@ -638,6 +638,15 @@ async def register(request: Request, data: UserCreate, response: Response):
     user_doc.pop("password_hash", None)
     user_doc.pop("_id", None)
     user_doc["created_at"] = now
+
+    # Send welcome email
+    try:
+        from services.email_service import email_service, welcome_email
+        html = welcome_email(data.name, data.company_name or "your company")
+        await email_service.send_email(data.email, "Welcome to RealtouchHR 🎉", html)
+    except Exception as e:
+        logger.warning(f"Welcome email failed: {e}")
+
     return TokenResponse(token=token, user=User(**user_doc))
 
 @api_router.post("/auth/login")
