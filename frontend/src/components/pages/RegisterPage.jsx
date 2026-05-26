@@ -47,7 +47,7 @@ export default function RegisterPage() {
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-600 to-teal-700 p-12 flex-col justify-between text-white">
                 <div>
                     <div className="flex items-center">
-                        <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-11 w-auto brightness-0 invert" />
+                        <img src="/logo.png" alt="RealtouchHR" className="h-11 w-auto" />
                     </div>
                 </div>
                 
@@ -81,7 +81,7 @@ export default function RegisterPage() {
                 <Card className="w-full max-w-md border-0 shadow-none lg:shadow-lg lg:border">
                     <CardHeader className="text-center space-y-2">
                         <div className="lg:hidden flex items-center justify-center mb-4">
-                            <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-9 w-auto" />
+                            <img src="/logo.png" alt="RealtouchHR" className="h-9 w-auto" />
                         </div>
                         <CardTitle className="text-2xl font-bold font-['Plus_Jakarta_Sans']">Create your account</CardTitle>
                         <CardDescription>Start your free trial - no credit card required</CardDescription>

@@ -148,7 +148,7 @@ export default function MainLayout({ children }) {
                     {/* Logo */}
                     <div className="flex items-center justify-between h-16 px-6 border-b border-border">
                         <Link to="/dashboard" className="flex items-center">
-                            <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-9 w-auto" />
+                            <img src="/logo.png" alt="RealtouchHR" className="h-9 w-auto" />
                         </Link>
                         <button 
                             className="lg:hidden p-1 rounded-md hover:bg-accent"
