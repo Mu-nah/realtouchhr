@@ -46,11 +46,8 @@ export default function RegisterPage() {
             {/* Left Side - Branding */}
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-600 to-teal-700 p-12 flex-col justify-between text-white">
                 <div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                            <Building2 className="w-7 h-7" />
-                        </div>
-                        <span className="text-2xl font-bold font-['Plus_Jakarta_Sans']">RealtouchHR</span>
+                    <div className="flex items-center">
+                        <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-11 w-auto brightness-0 invert" />
                     </div>
                 </div>
                 
@@ -83,11 +80,8 @@ export default function RegisterPage() {
             <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
                 <Card className="w-full max-w-md border-0 shadow-none lg:shadow-lg lg:border">
                     <CardHeader className="text-center space-y-2">
-                        <div className="lg:hidden flex items-center justify-center gap-2 mb-4">
-                            <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center">
-                                <Building2 className="w-6 h-6 text-white" />
-                            </div>
-                            <span className="text-xl font-bold font-['Plus_Jakarta_Sans']">RealtouchHR</span>
+                        <div className="lg:hidden flex items-center justify-center mb-4">
+                            <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-9 w-auto" />
                         </div>
                         <CardTitle className="text-2xl font-bold font-['Plus_Jakarta_Sans']">Create your account</CardTitle>
                         <CardDescription>Start your free trial - no credit card required</CardDescription>

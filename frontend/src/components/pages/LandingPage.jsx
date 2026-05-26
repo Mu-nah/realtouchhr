@@ -47,11 +47,8 @@ export default function LandingPage() {
             {/* Nav */}
             <header className="border-b border-white/5 backdrop-blur-md bg-slate-950/30">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                            <Building2 className="w-5 h-5" />
-                        </div>
-                        <span className="font-bold text-lg tracking-tight">RealtouchHR</span>
+                    <div className="flex items-center">
+                        <img src="/RealtouchHR logo.png" alt="RealtouchHR" className="h-9 w-auto brightness-0 invert" />
                     </div>
                     <nav className="hidden md:flex items-center gap-6 text-sm">
                         <a href="#features" className="text-white/80 hover:text-white transition">Features</a>
