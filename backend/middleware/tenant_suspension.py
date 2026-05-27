@@ -135,7 +135,7 @@ class TenantSuspensionMiddleware(BaseHTTPMiddleware):
                 )
 
         except Exception as exc:
-            logger.warning(f"TenantSuspensionMiddleware: error {exc}")
+            logger.debug(f"TenantSuspensionMiddleware: error {exc}")
             # On error, fail-open to avoid locking everyone out
 
         return await call_next(request)

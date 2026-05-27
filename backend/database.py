@@ -150,7 +150,7 @@ class Cursor:
                 return q.execute().data or []
             except Exception as exc:
                 if _is_missing_relation_error(exc):
-                    logger.warning("Missing table for cursor fetch: %s", table)
+                    logger.debug("Missing table for cursor fetch: %s", table)
                     return []
                 raise
 
@@ -274,7 +274,7 @@ class Collection:
                 return result.data[0] if result.data else None
             except Exception as exc:
                 if _is_missing_relation_error(exc):
-                    logger.warning("Missing table for find_one: %s", table)
+                    logger.debug("Missing table for find_one: %s", table)
                     return None
                 raise
 
@@ -304,7 +304,7 @@ class Collection:
                     msg = str(e)
                     msg_lower = msg.lower()
                     if _is_missing_relation_error(e):
-                        logger.warning("Missing table for insert_one: %s", table)
+                        logger.debug("Missing table for insert_one: %s", table)
                         return
                     if "duplicate" in msg_lower or "unique" in msg_lower or "23505" in msg_lower:
                         return  # ignore duplicates
@@ -423,7 +423,7 @@ class Collection:
                 except Exception as e:
                     msg = str(e)
                     if _is_missing_relation_error(e):
-                        logger.warning("Missing table for update on %s", table)
+                        logger.debug("Missing table for update on %s", table)
                         return
                     m = re.search(
                         r"could not find the [\"'](\w+)[\"'] column"
@@ -457,7 +457,7 @@ class Collection:
                     q.execute()
                 except Exception as exc:
                     if _is_missing_relation_error(exc):
-                        logger.warning("Missing table for delete_one: %s", table)
+                        logger.debug("Missing table for delete_one: %s", table)
                         return
                     raise
 
@@ -484,7 +484,7 @@ class Collection:
                 q.execute()
             except Exception as exc:
                 if _is_missing_relation_error(exc):
-                    logger.warning("Missing table for delete_many: %s", table)
+                    logger.debug("Missing table for delete_many: %s", table)
                     return
                 raise
 
@@ -508,7 +508,7 @@ class Collection:
                 return result.count or 0
             except Exception as exc:
                 if _is_missing_relation_error(exc):
-                    logger.warning("Missing table for count_documents: %s", table)
+                    logger.debug("Missing table for count_documents: %s", table)
                     return 0
                 raise
 
@@ -524,7 +524,7 @@ class Collection:
         pass
 
     async def drop(self):
-        logger.warning("drop() called on %s — ignored", self._table)
+        logger.debug("drop() called on %s - ignored", self._table)
 
 
 # ---------------------------------------------------------------------------

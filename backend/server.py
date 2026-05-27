@@ -85,6 +85,23 @@ SUPPORTED_CURRENCIES = {
 # Create the main app
 app = FastAPI(title="RealtouchHR API", version="2.0.0")
 
+# Configure logging
+LOG_LEVEL = (os.environ.get("LOG_LEVEL") or "CRITICAL").upper()
+LOG_VERBOSE_EXCEPTIONS = (os.environ.get("LOG_VERBOSE_EXCEPTIONS") or "").lower() in {"1", "true", "yes"}
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.WARNING), format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("postgrest").setLevel(logging.ERROR)
+logging.getLogger("supabase").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+logging.getLogger("uvicorn.access").disabled = True
+logging.getLogger("httpx").disabled = True
+logging.getLogger("httpcore").disabled = True
+logging.getLogger("postgrest").disabled = True
+logging.getLogger("supabase").disabled = True
+logger = logging.getLogger(__name__)
+
 # Rate limiting (slowapi) — applies to public endpoints (login, register, demo sandbox)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -115,7 +132,13 @@ async def _ratelimit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.exception_handler(Exception)
 async def _generic_exception_handler(request: Request, exc: Exception):
-    logging.getLogger(__name__).error("Unhandled exception on %s: %s", request.url.path, exc, exc_info=True)
+    if LOG_VERBOSE_EXCEPTIONS:
+        logging.getLogger(__name__).critical(
+            "Unhandled exception on %s: %s",
+            request.url.path,
+            exc,
+            exc_info=True,
+        )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 app.add_middleware(SlowAPIMiddleware)
@@ -126,10 +149,6 @@ app.add_middleware(TenantSuspensionMiddleware)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================
 
