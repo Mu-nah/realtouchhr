@@ -19,6 +19,13 @@ _client = None
 _executor = ThreadPoolExecutor(max_workers=20)
 
 
+def _is_missing_relation_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return (
+        "relation" in msg and "does not exist" in msg
+    ) or "could not find the table" in msg or "schema cache" in msg and "not found" in msg
+
+
 def _get_client():
     global _client
     if _client is None:
@@ -139,7 +146,13 @@ class Cursor:
                 q = q.limit(lim)
             elif skip:
                 q = q.range(skip, skip + 9999)
-            return q.execute().data or []
+            try:
+                return q.execute().data or []
+            except Exception as exc:
+                if _is_missing_relation_error(exc):
+                    logger.warning("Missing table for cursor fetch: %s", table)
+                    return []
+                raise
 
         return await _run(_fetch)
 
@@ -256,8 +269,14 @@ class Collection:
             client = _get_client()
             q = client.table(table).select("*")
             q = _apply_filter(q, filt or {})
-            result = q.limit(1).execute()
-            return result.data[0] if result.data else None
+            try:
+                result = q.limit(1).execute()
+                return result.data[0] if result.data else None
+            except Exception as exc:
+                if _is_missing_relation_error(exc):
+                    logger.warning("Missing table for find_one: %s", table)
+                    return None
+                raise
 
         return await _run(_fetch)
 
@@ -274,14 +293,33 @@ class Collection:
         table = self._table
 
         def _insert():
+            import re
             client = _get_client()
-            try:
-                client.table(table).insert(clean).execute()
-            except Exception as e:
-                msg = str(e).lower()
-                if "duplicate" in msg or "unique" in msg or "23505" in msg:
-                    pass  # ignore duplicate key (ON CONFLICT DO NOTHING)
-                else:
+            data = clean.copy()
+            for _ in range(30):  # max 30 retries for unknown columns
+                try:
+                    client.table(table).insert(data).execute()
+                    return
+                except Exception as e:
+                    msg = str(e)
+                    msg_lower = msg.lower()
+                    if _is_missing_relation_error(e):
+                        logger.warning("Missing table for insert_one: %s", table)
+                        return
+                    if "duplicate" in msg_lower or "unique" in msg_lower or "23505" in msg_lower:
+                        return  # ignore duplicates
+                    # Strip the offending column and retry
+                    m = re.search(
+                        r"could not find the [\"'](\w+)[\"'] column"
+                        r"|column [\"']?(\w+)[\"']? of relation"
+                        r"|column (\w+) does not exist",
+                        msg, re.IGNORECASE
+                    )
+                    if m:
+                        bad = m.group(1) or m.group(2) or m.group(3)
+                        if bad and bad in data:
+                            data.pop(bad)
+                            continue
                     raise
 
         await _run(_insert)
@@ -373,10 +411,32 @@ class Collection:
         table = self._table
 
         def _update():
+            import re
             client = _get_client()
-            q = client.table(table).update(set_data)
-            q = _apply_filter(q, filt)
-            q.execute()
+            data = set_data.copy()
+            for _ in range(30):
+                try:
+                    q = client.table(table).update(data)
+                    q = _apply_filter(q, filt)
+                    q.execute()
+                    return
+                except Exception as e:
+                    msg = str(e)
+                    if _is_missing_relation_error(e):
+                        logger.warning("Missing table for update on %s", table)
+                        return
+                    m = re.search(
+                        r"could not find the [\"'](\w+)[\"'] column"
+                        r"|column [\"']?(\w+)[\"']? of relation"
+                        r"|column (\w+) does not exist",
+                        msg, re.IGNORECASE
+                    )
+                    if m:
+                        bad = m.group(1) or m.group(2) or m.group(3)
+                        if bad and bad in data:
+                            data.pop(bad)
+                            continue
+                    raise
 
         await _run(_update)
 
@@ -393,7 +453,13 @@ class Collection:
                 client = _get_client()
                 q = client.table(table).delete()
                 q = _apply_filter(q, pk)
-                q.execute()
+                try:
+                    q.execute()
+                except Exception as exc:
+                    if _is_missing_relation_error(exc):
+                        logger.warning("Missing table for delete_one: %s", table)
+                        return
+                    raise
 
             await _run(_delete)
             deleted = 1
@@ -414,7 +480,13 @@ class Collection:
             client = _get_client()
             q = client.table(table).delete()
             q = _apply_filter(q, filt)
-            q.execute()
+            try:
+                q.execute()
+            except Exception as exc:
+                if _is_missing_relation_error(exc):
+                    logger.warning("Missing table for delete_many: %s", table)
+                    return
+                raise
 
         await _run(_delete)
 
@@ -431,8 +503,14 @@ class Collection:
             client = _get_client()
             q = client.table(table).select("*", count="exact")
             q = _apply_filter(q, filt or {})
-            result = q.limit(0).execute()
-            return result.count or 0
+            try:
+                result = q.limit(0).execute()
+                return result.count or 0
+            except Exception as exc:
+                if _is_missing_relation_error(exc):
+                    logger.warning("Missing table for count_documents: %s", table)
+                    return 0
+                raise
 
         return await _run(_count)
 

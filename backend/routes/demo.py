@@ -26,6 +26,13 @@ class CurrentUser(BaseModel):
     company_id: Optional[str] = None
 
 
+def _normalize_current_user_doc(user_doc: dict) -> dict:
+    normalized = dict(user_doc)
+    email = (normalized.get("email") or "").strip()
+    normalized["name"] = (normalized.get("name") or email.split("@")[0] or "User").strip()
+    return normalized
+
+
 async def get_current_user(request: Request) -> CurrentUser:
     token = request.cookies.get("session_token")
     if not token:
@@ -45,7 +52,7 @@ async def get_current_user(request: Request) -> CurrentUser:
             raise HTTPException(status_code=401, detail="Invalid token")
     if not user_doc:
         raise HTTPException(status_code=401, detail="User not found")
-    return CurrentUser(**user_doc)
+    return CurrentUser(**_normalize_current_user_doc(user_doc))
 
 
 DEMO_EMPLOYEES = [
@@ -135,7 +142,7 @@ async def seed_demo(user: CurrentUser = Depends(get_current_user)):
 
     # Idempotency: skip if a demo payrun already exists for this period
     existing_pr = await db.pay_runs.find_one(
-        {"company_id": company_id, "demo_seeded": True},
+        {"company_id": company_id, "period_start": start_d.isoformat()},
         {"_id": 0}
     )
     if not existing_pr:
@@ -161,11 +168,15 @@ async def seed_demo(user: CurrentUser = Depends(get_current_user)):
             await db.payslips.insert_many(payslips_to_insert)
 
     # Sample leave request and timesheet
-    if not await db.leave_requests.find_one({"company_id": company_id, "demo_seeded": True}):
+    first_emp_id = created_employees[0] if created_employees else None
+    if first_emp_id and not await db.leave_requests.find_one({"company_id": company_id, "employee_id": first_emp_id, "reason": "Summer holiday"}):
+        demo_leave_id = f"leave_{uuid.uuid4().hex[:12]}"
         await db.leave_requests.insert_one({
-            "leave_id": f"leave_{uuid.uuid4().hex[:12]}",
+            "leave_request_id": demo_leave_id,
+            "leave_id": demo_leave_id,
             "employee_id": created_employees[0],
             "company_id": company_id,
+            "employee_name": f"{DEMO_EMPLOYEES[0]['first_name']} {DEMO_EMPLOYEES[0]['last_name']}",
             "leave_type": "Annual",
             "start_date": (today + timedelta(days=14)).isoformat(),
             "end_date": (today + timedelta(days=18)).isoformat(),
@@ -174,6 +185,7 @@ async def seed_demo(user: CurrentUser = Depends(get_current_user)):
             "status": "pending",
             "demo_seeded": True,
             "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
         })
 
     return {
@@ -333,10 +345,45 @@ async def reset_demo(user: CurrentUser = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No company setup")
     company_id = user.company_id
     counts = {}
-    for col in ["employees", "pay_runs", "payslips", "leave_requests", "timesheets",
-                "shifts", "ukvi_alerts", "compliance_tasks"]:
-        result = await db[col].delete_many({"company_id": company_id, "demo_seeded": True})
-        counts[col] = result.deleted_count
+
+    # Delete demo employees (identified by email domain)
+    demo_emps = await db.employees.find(
+        {"company_id": company_id, "email": {"$regex": "realtouchhr-demo.uk"}},
+        {"_id": 0}
+    ).to_list(1000)
+    demo_emp_ids = [e["employee_id"] for e in demo_emps if e.get("employee_id")]
+
+    emp_res = await db.employees.delete_many(
+        {"company_id": company_id, "email": {"$regex": "realtouchhr-demo.uk"}}
+    )
+    counts["employees"] = emp_res.deleted_count
+
+    # Delete leave requests for demo employees
+    lr_count = 0
+    for eid in demo_emp_ids:
+        res = await db.leave_requests.delete_many({"company_id": company_id, "employee_id": eid})
+        lr_count += res.deleted_count
+    counts["leave_requests"] = lr_count
+
+    # Delete demo pay runs (current-month period_start) and their payslips
+    today = datetime.now(timezone.utc).date()
+    demo_period_start = today.replace(day=1).isoformat()
+    demo_runs = await db.pay_runs.find(
+        {"company_id": company_id, "period_start": demo_period_start},
+        {"_id": 0}
+    ).to_list(100)
+    demo_run_ids = [r["payrun_id"] for r in demo_runs if r.get("payrun_id")]
+
+    pr_count = 0
+    ps_count = 0
+    for rid in demo_run_ids:
+        res = await db.payslips.delete_many({"payrun_id": rid})
+        ps_count += res.deleted_count
+        res = await db.pay_runs.delete_one({"payrun_id": rid})
+        pr_count += res.deleted_count
+    counts["pay_runs"] = pr_count
+    counts["payslips"] = ps_count
+
     await db.companies.update_one(
         {"company_id": company_id},
         {"$set": {"demo_mode": False}, "$unset": {"demo_seeded_at": ""}}
@@ -350,7 +397,7 @@ async def demo_status(user: CurrentUser = Depends(get_current_user)):
         return {"demo_mode": False}
     company = await db.companies.find_one({"company_id": user.company_id}, {"_id": 0}) or {}
     emp_count = await db.employees.count_documents(
-        {"company_id": user.company_id, "demo_seeded": True}
+        {"company_id": user.company_id, "email": {"$regex": "realtouchhr-demo.uk"}}
     )
     return {
         "demo_mode": company.get("demo_mode", False),

@@ -20,6 +20,7 @@ import {
     Plus
 } from 'lucide-react';
 import { cn, formatCurrency, getStatusColor } from '../../lib/utils';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -35,18 +36,38 @@ export default function Dashboard() {
         try {
             const token = localStorage.getItem('token');
             const headers = { Authorization: `Bearer ${token}` };
-            const [statsRes, empRes, leaveRes, demoRes] = await Promise.all([
-                axios.get(`${API_URL}/api/dashboard/stats`, { headers, withCredentials: true }),
-                axios.get(`${API_URL}/api/employees`, { headers, withCredentials: true }),
-                axios.get(`${API_URL}/api/leave`, { headers, withCredentials: true }),
-                axios.get(`${API_URL}/api/demo/status`, { headers, withCredentials: true }).catch(() => ({ data: { demo_mode: false } })),
+            const [statsData, employeesData, leaveData, demoData] = await Promise.all([
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/dashboard/stats`, { headers, withCredentials: true }),
+                    {
+                        total_employees: 0,
+                        active_employees: 0,
+                        on_leave_today: 0,
+                        pending_approvals: 0,
+                        compliance_score: 100,
+                    },
+                    'dashboard stats'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/employees`, { headers, withCredentials: true }),
+                    [],
+                    'dashboard employees'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/leave`, { headers, withCredentials: true }),
+                    [],
+                    'dashboard leave'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/demo/status`, { headers, withCredentials: true }),
+                    { demo_mode: false },
+                    'demo status'
+                ),
             ]);
-            setStats(statsRes.data);
-            setEmployees(empRes.data.slice(0, 5));
-            setRecentLeaves(leaveRes.data.slice(0, 5));
-            setDemoStatus(demoRes.data || { demo_mode: false });
-        } catch (error) {
-            console.error('Error fetching dashboard data:', error);
+            setStats(statsData);
+            setEmployees((Array.isArray(employeesData) ? employeesData : []).slice(0, 5));
+            setRecentLeaves((Array.isArray(leaveData) ? leaveData : []).slice(0, 5));
+            setDemoStatus(demoData || { demo_mode: false });
         } finally {
             setLoading(false);
         }

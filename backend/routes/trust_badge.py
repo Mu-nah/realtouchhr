@@ -111,15 +111,21 @@ async def _company_attestations(company: dict) -> dict:
     company_id = company["company_id"]
 
     # Owner has 2FA?
-    owner_id = company.get("owner_id")
     owner_2fa = False
-    if owner_id:
-        rec = await db.user_2fa.find_one({"user_id": owner_id, "enabled": True}, {"_id": 0})
-        owner_2fa = bool(rec)
+    try:
+        owner_id = company.get("owner_id")
+        if owner_id:
+            rec = await db.user_2fa.find_one({"user_id": owner_id, "enabled": True}, {"_id": 0})
+            owner_2fa = bool(rec)
+    except Exception:
+        pass
 
-    # Audit-log activity (any entries within last 90 days)
-    ninety_days_ago = (datetime.now(timezone.utc).replace(microsecond=0)).isoformat()
-    audit_count = await db.audit_log.count_documents({"company_id": company_id})
+    # Audit-log activity
+    audit_count = 0
+    try:
+        audit_count = await db.audit_log.count_documents({"company_id": company_id})
+    except Exception:
+        pass
 
     # Subscription active?
     subscription_active = bool(company.get("subscription_active"))
@@ -134,7 +140,11 @@ async def _company_attestations(company: dict) -> dict:
     ukvi_sponsor = bool(company.get("sponsor_licence_number"))
 
     # Pension auto-enrolment scheme exists?
-    pension_scheme_count = await db.pension_schemes.count_documents({"company_id": company_id})
+    pension_scheme_count = 0
+    try:
+        pension_scheme_count = await db.pension_schemes.count_documents({"company_id": company_id})
+    except Exception:
+        pass
 
     return {
         "gdpr_compliant": gdpr_supported,

@@ -7,6 +7,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 import {
     CalendarCheck, FileCheck2, ShieldCheck, Loader2, AlertCircle, CheckCircle2,
     PoundSterling, FileText, Send,
@@ -27,12 +28,10 @@ export default function YearEndPage() {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await axios.get(`${API_URL}/api/year-end/preview?tax_year=${taxYear}`, {
+            const data = await requestOrDefault(axios.get(`${API_URL}/api/year-end/preview?tax_year=${taxYear}`, {
                 headers: { Authorization: `Bearer ${token}` }, withCredentials: true,
-            });
-            setPreview(res.data);
-        } catch (err) {
-            toast.error(err.response?.data?.detail || 'Failed to load preview');
+            }), null, 'year-end preview');
+            setPreview(data);
         } finally {
             setLoading(false);
         }

@@ -10,6 +10,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 import {
     Calculator, Heart, Baby, FileHeart, Loader2, Save, Info,
     PoundSterling, AlertCircle, Users, BookOpen,
@@ -67,16 +68,26 @@ export default function StatutoryPaymentsPage() {
         try {
             const token = localStorage.getItem('token');
             const headers = { Authorization: `Bearer ${token}` };
-            const [empRes, ratesRes, activeRes] = await Promise.all([
-                axios.get(`${API_URL}/api/employees`, { headers, withCredentials: true }),
-                axios.get(`${API_URL}/api/statutory/rates`, { headers, withCredentials: true }),
-                axios.get(`${API_URL}/api/statutory/active`, { headers, withCredentials: true }),
+            const [employeesData, ratesData, activeData] = await Promise.all([
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/employees`, { headers, withCredentials: true }),
+                    [],
+                    'statutory employees'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/statutory/rates`, { headers, withCredentials: true }),
+                    {},
+                    'statutory rates'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/statutory/active`, { headers, withCredentials: true }),
+                    { payments: [] },
+                    'active statutory payments'
+                ),
             ]);
-            setEmployees(empRes.data || []);
-            setRates(ratesRes.data);
-            setActive(activeRes.data?.payments || []);
-        } catch (err) {
-            toast.error('Failed to load statutory data');
+            setEmployees(Array.isArray(employeesData) ? employeesData : []);
+            setRates(ratesData || {});
+            setActive(activeData?.payments || []);
         } finally {
             setLoading(false);
         }

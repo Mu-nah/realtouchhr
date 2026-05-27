@@ -53,6 +53,25 @@ class CurrentUser(BaseModel):
     company_id: Optional[str] = None
 
 
+def _normalize_current_user_doc(user_doc: dict) -> dict:
+    normalized = dict(user_doc)
+    email = (normalized.get("email") or "").strip()
+    normalized["name"] = (normalized.get("name") or email.split("@")[0] or "User").strip()
+    return normalized
+
+
+def _normalize_leave_doc(leave_doc: dict) -> dict:
+    normalized = dict(leave_doc)
+    leave_id = normalized.get("leave_id") or normalized.get("leave_request_id")
+    normalized["leave_id"] = leave_id
+    normalized["created_at"] = normalized.get("created_at") or datetime.now(timezone.utc)
+    if isinstance(normalized["created_at"], str):
+        normalized["created_at"] = datetime.fromisoformat(
+            normalized["created_at"].replace("Z", "+00:00")
+        )
+    return normalized
+
+
 async def get_current_user(request: Request) -> CurrentUser:
     token = request.cookies.get("session_token")
     if not token:
@@ -72,7 +91,7 @@ async def get_current_user(request: Request) -> CurrentUser:
             raise HTTPException(status_code=401, detail="Invalid token")
     if not user_doc:
         raise HTTPException(status_code=401, detail="User not found")
-    return CurrentUser(**user_doc)
+    return CurrentUser(**_normalize_current_user_doc(user_doc))
 
 
 @router.post("/leave", response_model=LeaveRequest)
@@ -88,9 +107,11 @@ async def create_leave_request(data: LeaveRequestCreate, user: CurrentUser = Dep
     days = (end - start).days + 1
 
     leave_doc = {
+        "leave_request_id": leave_id,
         "leave_id": leave_id,
         "employee_id": user.user_id,
         "company_id": user.company_id,
+        "employee_name": user.name,
         "leave_type": data.leave_type,
         "start_date": data.start_date,
         "end_date": data.end_date,
@@ -109,7 +130,7 @@ async def create_leave_request(data: LeaveRequestCreate, user: CurrentUser = Dep
     )
 
     leave_doc["created_at"] = now
-    return LeaveRequest(**leave_doc)
+    return LeaveRequest(**_normalize_leave_doc(leave_doc))
 
 
 @router.get("/leave", response_model=List[LeaveRequest])
@@ -117,10 +138,7 @@ async def get_leave_requests(user: CurrentUser = Depends(get_current_user)):
     if not user.company_id:
         return []
     leaves = await db.leave_requests.find({"company_id": user.company_id}, {"_id": 0}).to_list(1000)
-    for leave in leaves:
-        if isinstance(leave.get("created_at"), str):
-            leave["created_at"] = datetime.fromisoformat(leave["created_at"])
-    return [LeaveRequest(**leave) for leave in leaves]
+    return [LeaveRequest(**_normalize_leave_doc(leave)) for leave in leaves]
 
 
 @router.put("/leave/{leave_id}")

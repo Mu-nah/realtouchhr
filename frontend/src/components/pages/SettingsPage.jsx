@@ -88,7 +88,11 @@ export default function SettingsPage() {
     const handleSaveCompany = async () => {
         setSaving(true);
         try {
-            await axios.put(`${API_URL}/api/company`, companyData, { withCredentials: true });
+            // Auto-complete setup when company name is present
+            const payload = companyData.name
+                ? { ...companyData, setup_completed: true }
+                : companyData;
+            await axios.put(`${API_URL}/api/company`, payload, { withCredentials: true });
             toast.success('Company settings saved');
             refreshCompany();
         } catch (error) {

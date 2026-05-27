@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, formatDate, getStatusColor, getComplianceColor } from '../../lib/utils';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -56,10 +57,12 @@ export default function PayrollPage() {
 
     const fetchPayRuns = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/payroll/runs`, { withCredentials: true });
-            setPayRuns(response.data);
-        } catch (error) {
-            toast.error('Failed to load pay runs');
+            const data = await requestOrDefault(
+                axios.get(`${API_URL}/api/payroll/runs`, { withCredentials: true }),
+                [],
+                'pay runs'
+            );
+            setPayRuns(Array.isArray(data) ? data : []);
         } finally {
             setLoading(false);
         }

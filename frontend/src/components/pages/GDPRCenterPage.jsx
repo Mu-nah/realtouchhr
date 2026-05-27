@@ -133,16 +133,26 @@ export default function GDPRCenterPage() {
                                 </Button>
                             </div>
                             {exportPreview && (
-                                <div className="mt-4 p-4 rounded-lg bg-muted">
-                                    <p className="text-sm font-medium mb-2">Export Summary</p>
-                                    <p className="text-xs text-muted-foreground">Export ID: {exportPreview.export_id}</p>
-                                    <p className="text-xs text-muted-foreground mb-2">Generated: {new Date(exportPreview.generated_at).toLocaleString('en-GB')}</p>
-                                    <p className="text-sm font-medium">Data Categories ({exportPreview.summary?.total_categories || 0}):</p>
-                                    <div className="flex flex-wrap gap-2 mt-1">
-                                        {(exportPreview.summary?.categories || []).map(c => (
-                                            <Badge key={c} variant="secondary" className="text-xs">{c.replace('_', ' ')}</Badge>
-                                        ))}
+                                <div className="mt-4 space-y-3">
+                                    <div className="p-4 rounded-lg bg-muted">
+                                        <p className="text-sm font-medium mb-2">Export Summary</p>
+                                        <p className="text-xs text-muted-foreground">Export ID: {exportPreview.export_id}</p>
+                                        <p className="text-xs text-muted-foreground mb-2">Generated: {new Date(exportPreview.generated_at).toLocaleString('en-GB')}</p>
+                                        <p className="text-sm font-medium">Data Categories ({exportPreview.summary?.total_categories || Object.keys(exportPreview.data || {}).length}):</p>
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                            {(exportPreview.summary?.categories || Object.keys(exportPreview.data || {})).map(c => (
+                                                <Badge key={c} variant="secondary" className="text-xs">{c.replace(/_/g, ' ')}</Badge>
+                                            ))}
+                                        </div>
                                     </div>
+                                    {exportPreview.data && Object.keys(exportPreview.data).length > 0 && (
+                                        <div className="rounded-lg border">
+                                            <p className="text-sm font-medium px-4 py-2 border-b">Data Preview</p>
+                                            <pre className="text-xs p-4 overflow-auto max-h-72 whitespace-pre-wrap break-words">
+                                                {JSON.stringify(exportPreview.data, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </CardContent>

@@ -45,6 +45,13 @@ class User(BaseModel):
     company_id: Optional[str] = None
 
 
+def _normalize_user_doc(user_doc: dict) -> dict:
+    normalized = dict(user_doc)
+    email = (normalized.get("email") or "").strip()
+    normalized["name"] = (normalized.get("name") or email.split("@")[0] or "User").strip()
+    return normalized
+
+
 class ImmigrationStatusUpdate(BaseModel):
     visa_type: Optional[str] = None
     visa_start_date: Optional[str] = None
@@ -88,7 +95,7 @@ async def get_current_user(request: Request) -> User:
             user_doc = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
             if not user_doc:
                 raise HTTPException(status_code=401, detail="User not found")
-            return User(**user_doc)
+            return User(**_normalize_user_doc(user_doc))
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token expired")
         except jwt.InvalidTokenError:
@@ -97,7 +104,7 @@ async def get_current_user(request: Request) -> User:
     user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
     if not user_doc:
         raise HTTPException(status_code=401, detail="User not found")
-    return User(**user_doc)
+    return User(**_normalize_user_doc(user_doc))
 
 
 async def require_hr_admin(request: Request) -> User:
@@ -268,7 +275,7 @@ async def list_ukvi_alerts(
     
     query = {"company_id": user.company_id}
     if resolved is not None:
-        query["resolved"] = resolved
+        query["status"] = "resolved" if resolved else "open"
     if severity:
         query["severity"] = severity
     
@@ -380,7 +387,7 @@ async def list_reporting_events(
     
     query = {"company_id": user.company_id}
     if reported is not None:
-        query["reported"] = reported
+        query["submitted"] = reported
     
     events = await db.ukvi_reporting_events.find(
         query,

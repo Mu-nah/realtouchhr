@@ -32,6 +32,9 @@ export default function EnterprisePage() {
   const [loading, setLoading] = useState(true);
   const [showCreateRole, setShowCreateRole] = useState(false);
   const [newRole, setNewRole] = useState({ name: '', description: '', permissions: [] });
+  const [showCreateEntity, setShowCreateEntity] = useState(false);
+  const [newEntityName, setNewEntityName] = useState('');
+  const [entitySaving, setEntitySaving] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -65,6 +68,31 @@ export default function EnterprisePage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleCreateEntity = async () => {
+    if (!newEntityName.trim()) return;
+    setEntitySaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/api/enterprise/entities`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newEntityName.trim() }),
+      });
+      if (res.ok) {
+        setShowCreateEntity(false);
+        setNewEntityName('');
+        fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to create entity');
+      }
+    } catch {
+      alert('Failed to create entity');
+    } finally {
+      setEntitySaving(false);
+    }
+  };
 
   const handleCreateRole = async () => {
     if (!newRole.name || !newRole.description || newRole.permissions.length === 0) {
@@ -285,9 +313,9 @@ export default function EnterprisePage() {
                   Set up multi-entity management to handle payroll and compliance
                   across multiple legal entities in your organization.
                 </p>
-                <Button>
+                <Button onClick={() => setShowCreateEntity(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Create Organization
+                  Create Entity
                 </Button>
               </div>
             </CardContent>
@@ -398,6 +426,36 @@ export default function EnterprisePage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Create Entity Dialog */}
+      {showCreateEntity && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-600" />
+              <h2 className="text-lg font-bold">Create Legal Entity</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">Add a subsidiary or separate legal entity to manage under this organisation.</p>
+            <div>
+              <Label htmlFor="entity-name">Entity name *</Label>
+              <Input
+                id="entity-name"
+                className="mt-1"
+                placeholder="e.g. Acme UK Ltd"
+                value={newEntityName}
+                onChange={e => setNewEntityName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateEntity()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => { setShowCreateEntity(false); setNewEntityName(''); }}>Cancel</Button>
+              <Button onClick={handleCreateEntity} disabled={entitySaving || !newEntityName.trim()}>
+                {entitySaving ? 'Creating…' : 'Create Entity'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate, getStatusColor } from '../../lib/utils';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -64,10 +65,12 @@ export default function LeavePage() {
 
     const fetchLeaves = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/leave`, { withCredentials: true });
-            setLeaves(response.data);
-        } catch (error) {
-            toast.error('Failed to load leave requests');
+            const data = await requestOrDefault(
+                axios.get(`${API_URL}/api/leave`, { withCredentials: true }),
+                [],
+                'leave requests'
+            );
+            setLeaves(Array.isArray(data) ? data : []);
         } finally {
             setLoading(false);
         }
@@ -228,12 +231,12 @@ export default function LeavePage() {
                             Team Calendar
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex justify-center p-2">
                         <Calendar
                             mode="single"
                             selected={selectedDate}
                             onSelect={setSelectedDate}
-                            className="rounded-md border"
+                            className="w-full max-w-sm"
                             modifiers={{
                                 leave: leaveDates
                             }}

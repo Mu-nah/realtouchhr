@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate, getStatusColor } from '../../lib/utils';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -59,10 +60,12 @@ export default function DocumentsPage() {
 
     const fetchDocuments = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/documents`, { withCredentials: true });
-            setDocuments(response.data);
-        } catch (error) {
-            toast.error('Failed to load documents');
+            const data = await requestOrDefault(
+                axios.get(`${API_URL}/api/documents`, { withCredentials: true }),
+                [],
+                'documents'
+            );
+            setDocuments(Array.isArray(data) ? data : []);
         } finally {
             setLoading(false);
         }

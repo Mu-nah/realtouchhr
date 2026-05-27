@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn, getStatusColor, getComplianceColor } from '../../lib/utils';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -54,10 +55,12 @@ export default function EmployeesPage() {
 
     const fetchEmployees = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/employees`, { withCredentials: true });
-            setEmployees(response.data);
-        } catch (error) {
-            toast.error('Failed to load employees');
+            const data = await requestOrDefault(
+                axios.get(`${API_URL}/api/employees`, { withCredentials: true }),
+                [],
+                'employees'
+            );
+            setEmployees(Array.isArray(data) ? data : []);
         } finally {
             setLoading(false);
         }

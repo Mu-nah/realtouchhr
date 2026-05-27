@@ -113,6 +113,11 @@ async def _ratelimit_handler(request: Request, exc: RateLimitExceeded):
         content={"detail": "Too many requests. Please try again later.", "retry_after": str(getattr(exc, 'detail', ''))}
     )
 
+@app.exception_handler(Exception)
+async def _generic_exception_handler(request: Request, exc: Exception):
+    logging.getLogger(__name__).error("Unhandled exception on %s: %s", request.url.path, exc, exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 app.add_middleware(SlowAPIMiddleware)
 
 # Tenant suspension enforcement — blocks suspended / unpaid tenants from accessing the app
@@ -520,6 +525,38 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
+def _coerce_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+def _normalize_user_doc(user_doc: dict) -> dict:
+    normalized = dict(user_doc)
+    email = (normalized.get("email") or "").strip()
+    normalized["name"] = (normalized.get("name") or email.split("@")[0] or "User").strip()
+    normalized["created_at"] = _coerce_datetime(normalized.get("created_at"))
+    return normalized
+
+def _normalize_employee_doc(employee_doc: dict) -> dict:
+    normalized = dict(employee_doc)
+    normalized["created_at"] = _coerce_datetime(normalized.get("created_at"))
+    normalized["updated_at"] = _coerce_datetime(
+        normalized.get("updated_at") or normalized.get("created_at")
+    )
+    return normalized
+
+def _normalize_shift_doc(shift_doc: dict) -> dict:
+    normalized = dict(shift_doc)
+    normalized["shift_id"] = normalized.get("shift_id") or normalized.get("entry_id")
+    normalized["created_at"] = _coerce_datetime(normalized.get("created_at"))
+    return normalized
+
 async def get_current_user(request: Request) -> User:
     # Check cookie first
     session_token = request.cookies.get("session_token")
@@ -549,7 +586,7 @@ async def get_current_user(request: Request) -> User:
                 raise HTTPException(status_code=401, detail="User not found")
             if (user_doc.get("email") or "").lower() in _get_platform_admin_emails():
                 user_doc["is_platform_admin"] = True
-            return User(**user_doc)
+            return User(**_normalize_user_doc(user_doc))
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token expired")
         except jwt.InvalidTokenError:
@@ -571,7 +608,7 @@ async def get_current_user(request: Request) -> User:
     if (user_doc.get("email") or "").lower() in _get_platform_admin_emails():
         user_doc["is_platform_admin"] = True
 
-    return User(**user_doc)
+    return User(**_normalize_user_doc(user_doc))
 
 async def create_audit_entry(company_id: str, user: User, action: str, entity_type: str, entity_id: str, details: dict, reason: str = None):
     audit = {
@@ -665,7 +702,7 @@ async def register(request: Request, data: UserCreate, response: Response):
     except Exception as e:
         logger.warning(f"Welcome email failed: {e}")
 
-    return TokenResponse(token=token, user=User(**user_doc))
+    return TokenResponse(token=token, user=User(**_normalize_user_doc(user_doc)))
 
 @api_router.post("/auth/login")
 @limiter.limit("20/minute")
@@ -715,9 +752,7 @@ async def login(request: Request, data: UserLogin, response: Response):
     )
     
     user_doc.pop("password_hash", None)
-    if isinstance(user_doc.get("created_at"), str):
-        user_doc["created_at"] = datetime.fromisoformat(user_doc["created_at"])
-    return TokenResponse(token=token, user=User(**user_doc))
+    return TokenResponse(token=token, user=User(**_normalize_user_doc(user_doc)))
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(user: User = Depends(get_current_user)):
@@ -993,14 +1028,8 @@ async def get_employees(user: User = Depends(get_current_user)):
         return []
     
     employees = await db.employees.find({"company_id": user.company_id}, {"_id": 0}).to_list(1000)
-    
-    for emp in employees:
-        if isinstance(emp.get("created_at"), str):
-            emp["created_at"] = datetime.fromisoformat(emp["created_at"])
-        if isinstance(emp.get("updated_at"), str):
-            emp["updated_at"] = datetime.fromisoformat(emp["updated_at"])
-    
-    return [Employee(**emp) for emp in employees]
+
+    return [Employee(**_normalize_employee_doc(emp)) for emp in employees]
 
 @api_router.get("/employees/{employee_id}", response_model=Employee)
 async def get_employee(employee_id: str, user: User = Depends(get_current_user)):
@@ -1010,13 +1039,8 @@ async def get_employee(employee_id: str, user: User = Depends(get_current_user))
     emp = await db.employees.find_one({"employee_id": employee_id, "company_id": user.company_id}, {"_id": 0})
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
-    if isinstance(emp.get("created_at"), str):
-        emp["created_at"] = datetime.fromisoformat(emp["created_at"])
-    if isinstance(emp.get("updated_at"), str):
-        emp["updated_at"] = datetime.fromisoformat(emp["updated_at"])
-    
-    return Employee(**emp)
+
+    return Employee(**_normalize_employee_doc(emp))
 
 @api_router.put("/employees/{employee_id}")
 async def update_employee(employee_id: str, data: dict, user: User = Depends(get_current_user)):
@@ -1058,6 +1082,7 @@ async def create_shift(data: ShiftCreate, user: User = Depends(get_current_user)
     now = datetime.now(timezone.utc)
     
     shift_doc = {
+        "entry_id": shift_id,
         "shift_id": shift_id,
         "company_id": user.company_id,
         "employee_id": data.employee_id,
@@ -1072,7 +1097,7 @@ async def create_shift(data: ShiftCreate, user: User = Depends(get_current_user)
     await create_audit_entry(user.company_id, user, "create", "shift", shift_id, {"employee_id": data.employee_id, "date": data.date})
     
     shift_doc["created_at"] = now
-    return Shift(**shift_doc)
+    return Shift(**_normalize_shift_doc(shift_doc))
 
 @api_router.get("/shifts", response_model=List[Shift])
 async def get_shifts(date: Optional[str] = None, user: User = Depends(get_current_user)):
@@ -1084,18 +1109,14 @@ async def get_shifts(date: Optional[str] = None, user: User = Depends(get_curren
         query["date"] = date
     
     shifts = await db.shifts.find(query, {"_id": 0}).to_list(1000)
-    
-    for shift in shifts:
-        if isinstance(shift.get("created_at"), str):
-            shift["created_at"] = datetime.fromisoformat(shift["created_at"])
-    
-    return [Shift(**shift) for shift in shifts]
+
+    return [Shift(**_normalize_shift_doc(shift)) for shift in shifts]
 
 @api_router.post("/shifts/{shift_id}/clock-in")
 async def clock_in(shift_id: str, user: User = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     await db.shifts.update_one(
-        {"shift_id": shift_id, "company_id": user.company_id},
+        {"$or": [{"shift_id": shift_id}, {"entry_id": shift_id}], "company_id": user.company_id},
         {"$set": {"clock_in": now.isoformat(), "status": "in-progress"}}
     )
     await create_audit_entry(user.company_id, user, "clock_in", "shift", shift_id, {"time": now.isoformat()})
@@ -1105,7 +1126,7 @@ async def clock_in(shift_id: str, user: User = Depends(get_current_user)):
 async def clock_out(shift_id: str, user: User = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     await db.shifts.update_one(
-        {"shift_id": shift_id, "company_id": user.company_id},
+        {"$or": [{"shift_id": shift_id}, {"entry_id": shift_id}], "company_id": user.company_id},
         {"$set": {"clock_out": now.isoformat(), "status": "completed"}}
     )
     await create_audit_entry(user.company_id, user, "clock_out", "shift", shift_id, {"time": now.isoformat()})
@@ -1426,6 +1447,8 @@ IMPORTANT RULES:
 3. If uncertain, ask clarifying questions
 4. For any action that affects pay or legal compliance, REQUIRE explicit human approval
 5. Use UK-specific terminology (NI, PAYE, P45, P60, etc.)
+6. Do NOT use markdown formatting, bullet lists, asterisks, or emoji-heavy formatting
+7. Write in plain, natural sentences and short paragraphs only
 
 Your role is to:
 - Guide users through HR and payroll processes

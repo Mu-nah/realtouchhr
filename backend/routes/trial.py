@@ -23,6 +23,13 @@ class CurrentUser(BaseModel):
     company_id: Optional[str] = None
 
 
+def _normalize_current_user_doc(user_doc: dict) -> dict:
+    normalized = dict(user_doc)
+    email = (normalized.get("email") or "").strip()
+    normalized["name"] = (normalized.get("name") or email.split("@")[0] or "User").strip()
+    return normalized
+
+
 async def get_current_user(request: Request) -> CurrentUser:
     token = request.cookies.get("session_token")
     if not token:
@@ -42,7 +49,7 @@ async def get_current_user(request: Request) -> CurrentUser:
             raise HTTPException(status_code=401, detail="Invalid token")
     if not user_doc:
         raise HTTPException(status_code=401, detail="User not found")
-    return CurrentUser(**user_doc)
+    return CurrentUser(**_normalize_current_user_doc(user_doc))
 
 
 @router.get("/status")

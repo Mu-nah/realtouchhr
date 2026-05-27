@@ -119,11 +119,14 @@ class UKVIAlert:
     
     def to_dict(self) -> dict:
         return {
+            "record_id": self.alert_id,
             "alert_id": self.alert_id,
             "employee_id": self.employee_id,
             "company_id": self.company_id,
             "alert_type": self.alert_type,
             "severity": self.severity,
+            "message": self.description,
+            "status": "resolved" if self.resolved else "open",
             "title": self.title,
             "description": self.description,
             "action_required": self.action_required,
@@ -151,12 +154,14 @@ class ReportingEvent:
     
     def to_dict(self) -> dict:
         return {
+            "record_id": self.event_id,
             "event_id": self.event_id,
             "employee_id": self.employee_id,
             "company_id": self.company_id,
             "event_type": self.event_type.value if isinstance(self.event_type, UKVIReportingEvent) else self.event_type,
             "event_date": self.event_date.isoformat(),
             "details": self.details,
+            "submitted": self.reported,
             "reported": self.reported,
             "reported_date": self.reported_date.isoformat() if self.reported_date else None,
             "sms_reference": self.sms_reference,
@@ -165,6 +170,9 @@ class ReportingEvent:
 
 
 # ==================== UKVI SERVICE ====================
+
+def _event_identifier(event: dict) -> Optional[str]:
+    return event.get("event_id") or event.get("record_id")
 
 class UKVIComplianceService:
     """
@@ -445,13 +453,13 @@ class UKVIComplianceService:
         
         # Get active alerts
         active_alerts = await db.ukvi_alerts.find(
-            {"company_id": company_id, "resolved": False},
+            {"company_id": company_id, "status": "open"},
             {"_id": 0}
         ).sort("created_at", -1).limit(20).to_list(20)
         
         # Get pending reportable events
         pending_events = await db.ukvi_reporting_events.find(
-            {"company_id": company_id, "reported": False},
+            {"company_id": company_id, "submitted": False},
             {"_id": 0}
         ).sort("event_date", -1).limit(20).to_list(20)
         
@@ -656,7 +664,7 @@ class UKVIComplianceService:
             existing = await db.ukvi_alerts.find_one({
                 "employee_id": alert.employee_id,
                 "alert_type": alert.alert_type,
-                "resolved": False
+                "status": "open"
             })
             
             if not existing:
@@ -715,15 +723,19 @@ class UKVIComplianceService:
                 existing = await db.ukvi_alerts.find_one({
                     "employee_id": emp["employee_id"],
                     "alert_type": "salary_threshold_breach",
-                    "resolved": False,
+                    "status": "open",
                 })
                 if not existing:
                     await db.ukvi_alerts.insert_one({
                         "alert_id": alert_id,
+                        "record_id": alert_id,
                         "employee_id": emp["employee_id"],
                         "company_id": company_id,
                         "alert_type": "salary_threshold_breach",
                         "severity": "high",
+                        "message": (
+                            f"Annual salary GBP {salary:,.0f} is below threshold GBP {going_rate:,.0f}."
+                        ),
                         "title": f"Salary below sponsor threshold: {emp.get('first_name', '')} {emp.get('last_name', '')}",
                         "description": (
                             f"Annual salary £{salary:,.0f} is below the going-rate / threshold £{going_rate:,.0f} "
@@ -731,7 +743,7 @@ class UKVIComplianceService:
                         ),
                         "action_required": "Review CoS, increase salary, or reassess sponsorship",
                         "deadline": None,
-                        "resolved": False,
+                        "status": "open",
                         "created_at": now.isoformat(),
                     })
 
@@ -749,7 +761,7 @@ class UKVIComplianceService:
         result = await db.ukvi_alerts.update_one(
             {"alert_id": alert_id},
             {"$set": {
-                "resolved": True,
+                "status": "resolved",
                 "resolved_at": now.isoformat(),
                 "resolved_by": resolved_by,
                 "resolution_note": resolution_note
@@ -775,7 +787,7 @@ class UKVIComplianceService:
         result = await db.ukvi_reporting_events.update_one(
             {"event_id": event_id},
             {"$set": {
-                "reported": True,
+                "submitted": True,
                 "reported_date": now.isoformat(),
                 "sms_reference": sms_reference,
                 "reported_by": reported_by
@@ -794,7 +806,7 @@ class UKVIComplianceService:
         Groups events by type and calculates days remaining to report.
         """
         pending_events = await db.ukvi_reporting_events.find(
-            {"company_id": company_id, "reported": False},
+            {"company_id": company_id, "submitted": False},
             {"_id": 0}
         ).to_list(100)
         
@@ -817,7 +829,7 @@ class UKVIComplianceService:
             employee_name = f"{employee.get('first_name', '')} {employee.get('last_name', '')}" if employee else "Unknown"
             
             checklist.append({
-                "event_id": event["event_id"],
+                "event_id": _event_identifier(event),
                 "employee_name": employee_name,
                 "event_type": event["event_type"],
                 "event_date": event["event_date"],

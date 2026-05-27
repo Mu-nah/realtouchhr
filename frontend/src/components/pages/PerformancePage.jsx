@@ -15,6 +15,7 @@ import {
 } from '../ui/dialog';
 import { toast } from 'sonner';
 import { Target, ClipboardCheck, MessageSquare, Plus, Loader2, Scale } from 'lucide-react';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, withCredentials: true });
@@ -53,18 +54,16 @@ export default function PerformancePage() {
 
     const load = async () => {
         try {
-            const [eRes, aRes, oRes, nRes] = await Promise.all([
-                axios.get(`${API_URL}/api/employees`, auth()),
-                axios.get(`${API_URL}/api/performance/appraisals`, auth()),
-                axios.get(`${API_URL}/api/performance/objectives`, auth()),
-                axios.get(`${API_URL}/api/performance/notes`, auth()),
+            const [employeesData, appraisalsData, objectivesData, notesData] = await Promise.all([
+                requestOrDefault(axios.get(`${API_URL}/api/employees`, auth()), [], 'performance employees'),
+                requestOrDefault(axios.get(`${API_URL}/api/performance/appraisals`, auth()), { appraisals: [] }, 'appraisals'),
+                requestOrDefault(axios.get(`${API_URL}/api/performance/objectives`, auth()), { objectives: [] }, 'objectives'),
+                requestOrDefault(axios.get(`${API_URL}/api/performance/notes`, auth()), { notes: [] }, 'performance notes'),
             ]);
-            setEmployees(eRes.data || []);
-            setAppraisals(aRes.data.appraisals || []);
-            setObjectives(oRes.data.objectives || []);
-            setNotes(nRes.data.notes || []);
-        } catch (err) {
-            toast.error(err.response?.data?.detail || 'Failed to load performance data');
+            setEmployees(Array.isArray(employeesData) ? employeesData : []);
+            setAppraisals(appraisalsData.appraisals || []);
+            setObjectives(objectivesData.objectives || []);
+            setNotes(notesData.notes || []);
         } finally {
             setLoading(false);
         }

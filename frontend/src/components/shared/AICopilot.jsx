@@ -8,11 +8,18 @@ import { cn } from '../../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
+const cleanCopilotText = (text = '') =>
+    text
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/^\s*[-*]\s+/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
 export default function AICopilot({ open, onClose }) {
     const [messages, setMessages] = useState([
         {
             role: 'assistant',
-            content: "Hello! I'm your RealtouchHR AI Copilot. I can help you with HR processes, payroll guidance, compliance questions, and more. How can I assist you today?",
+            content: "Hello! I'm your RealtouchHR AI Copilot. I can help with HR processes, payroll guidance, compliance questions, and more. How can I help today?",
             suggestions: ['How do I add a new employee?', 'What are UK payroll requirements?', 'Check my compliance status']
         }
     ]);
@@ -42,7 +49,7 @@ export default function AICopilot({ open, onClose }) {
 
             const assistantMessage = {
                 role: 'assistant',
-                content: response.data.response,
+                content: cleanCopilotText(response.data.response),
                 suggestions: response.data.suggestions,
                 requiresApproval: response.data.requires_approval
             };

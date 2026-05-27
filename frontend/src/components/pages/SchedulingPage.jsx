@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate, getStatusColor } from '../../lib/utils';
 import { toast } from 'sonner';
+import { requestOrDefault } from '../../lib/loaders';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -53,14 +54,20 @@ export default function SchedulingPage() {
 
     const fetchData = async () => {
         try {
-            const [shiftsRes, empRes] = await Promise.all([
-                axios.get(`${API_URL}/api/shifts`, { withCredentials: true }),
-                axios.get(`${API_URL}/api/employees`, { withCredentials: true })
+            const [shiftsData, employeesData] = await Promise.all([
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/shifts`, { withCredentials: true }),
+                    [],
+                    'shifts'
+                ),
+                requestOrDefault(
+                    axios.get(`${API_URL}/api/employees`, { withCredentials: true }),
+                    [],
+                    'employees for scheduling'
+                )
             ]);
-            setShifts(shiftsRes.data);
-            setEmployees(empRes.data);
-        } catch (error) {
-            toast.error('Failed to load scheduling data');
+            setShifts(Array.isArray(shiftsData) ? shiftsData : []);
+            setEmployees(Array.isArray(employeesData) ? employeesData : []);
         } finally {
             setLoading(false);
         }
