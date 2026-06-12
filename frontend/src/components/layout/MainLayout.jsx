@@ -46,7 +46,8 @@ import {
     GraduationCap,
     Thermometer,
     CalendarClock,
-    ClipboardList
+    ClipboardList,
+    BarChart3
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import AICopilot from '../shared/AICopilot';
@@ -83,6 +84,9 @@ const navigation = [
     { name: 'Trust Badge', href: '/trust-badge', icon: Award, ownerOnly: true },
     { name: 'Admin', href: '/admin', icon: Shield, adminOnly: true },
     { name: 'Super Admin', href: '/super-admin', icon: Shield, platformAdminOnly: true },
+    { name: 'Expenses', href: '/expenses', icon: Receipt },
+    { name: 'Recruitment', href: '/recruitment', icon: Briefcase },
+    { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Billing', href: '/billing', icon: Receipt, ownerOnly: true },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];

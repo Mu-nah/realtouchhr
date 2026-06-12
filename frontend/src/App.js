@@ -56,6 +56,9 @@ import TrainingPage from './components/pages/TrainingPage';
 import AbsencePage from './components/pages/AbsencePage';
 import HRAnalyticsPage from './components/pages/HRAnalyticsPage';
 import DPOCenterPage from './components/pages/DPOCenterPage';
+import ExpensesPage from './components/pages/ExpensesPage';
+import RecruitmentPage from './components/pages/RecruitmentPage';
+import ReportsPage from './components/pages/ReportsPage';
 
 // Layout
 import MainLayout from './components/layout/MainLayout';
@@ -222,6 +225,9 @@ function AppRouter() {
             <Route path="/absence" element={<ProtectedRoute><AbsencePage /></ProtectedRoute>} />
             <Route path="/hr-analytics" element={<ProtectedRoute><HRAnalyticsPage /></ProtectedRoute>} />
             <Route path="/dpo" element={<ProtectedRoute><DPOCenterPage /></ProtectedRoute>} />
+            <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
+            <Route path="/recruitment" element={<ProtectedRoute><RecruitmentPage /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
             <Route path="/invite/:token" element={<InviteAcceptPage />} />
             <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
             <Route path="/settings/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />

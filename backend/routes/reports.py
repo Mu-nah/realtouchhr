@@ -1,0 +1,365 @@
+"""Reports module — 16 BrightHR-equivalent reports with CSV download."""
+from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime, timezone, timedelta
+import uuid, csv, io, os, sys, jwt
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv
+ROOT_DIR = Path(__file__).parent.parent
+load_dotenv(ROOT_DIR / '.env')
+from database import db
+
+JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
+router = APIRouter(prefix="/reports", tags=["Reports"])
+
+
+class CurrentUser(BaseModel):
+    user_id: str
+    email: str
+    name: str
+    role: str = "employee"
+    company_id: Optional[str] = None
+
+
+async def get_current_user(request: Request) -> CurrentUser:
+    token = request.cookies.get("session_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth.split(" ", 1)[1]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if session:
+        user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    else:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+            user_doc = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    return CurrentUser(**{k: v for k, v in user_doc.items() if k in CurrentUser.model_fields})
+
+
+async def require_manager(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if user.role not in ("owner", "admin", "manager"):
+        raise HTTPException(status_code=403, detail="Manager or admin role required")
+    return user
+
+
+def _csv_response(rows: list, headers: list, filename: str) -> StreamingResponse:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _date_filter(date_from: Optional[str], date_to: Optional[str], field: str) -> dict:
+    q: dict = {}
+    if date_from:
+        q[field] = {"$gte": date_from}
+    if date_to:
+        q.setdefault(field, {})["$lte"] = date_to
+    return q
+
+
+# ── 1. Absence Report ────────────────────────────────────────────────────────
+
+@router.get("/absence")
+async def absence_report(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    fmt: str = "json",
+    user: CurrentUser = Depends(require_manager),
+):
+    query: dict = {"company_id": user.company_id}
+    if employee_id:
+        query["employee_id"] = employee_id
+    df = _date_filter(date_from, date_to, "start_date")
+    query.update(df)
+    records = await db.leave_requests.find(query, {"_id": 0}).sort("start_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name"), r.get("leave_type"), r.get("start_date"), r.get("end_date"), r.get("days", ""), r.get("status"), r.get("notes", "")] for r in records]
+        return _csv_response(rows, ["Employee", "Type", "Start", "End", "Days", "Status", "Notes"], f"absence_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "absence", "total": len(records), "records": records}
+
+
+# ── 2. Annual Leave Summary ──────────────────────────────────────────────────
+
+@router.get("/annual-leave-summary")
+async def annual_leave_summary(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    employees = await db.employees.find({"company_id": user.company_id, "status": {"$ne": "archived"}}, {"_id": 0}).to_list(1000)
+    rows = []
+    for e in employees:
+        eid = e.get("employee_id")
+        entitlement = e.get("annual_leave_entitlement", 28)
+        taken = await db.leave_requests.count_documents({"company_id": user.company_id, "employee_id": eid, "leave_type": {"$in": ["annual_leave", "holiday"]}, "status": "approved"})
+        pending = await db.leave_requests.count_documents({"company_id": user.company_id, "employee_id": eid, "leave_type": {"$in": ["annual_leave", "holiday"]}, "status": "pending"})
+        remaining = max(0, entitlement - taken)
+        rows.append({"employee": f"{e.get('first_name')} {e.get('last_name')}", "department": e.get("department"), "entitlement": entitlement, "taken": taken, "pending": pending, "remaining": remaining})
+    if fmt == "csv":
+        return _csv_response([[r["employee"], r["department"], r["entitlement"], r["taken"], r["pending"], r["remaining"]] for r in rows],
+                             ["Employee", "Department", "Entitlement (days)", "Taken", "Pending", "Remaining"],
+                             f"annual_leave_summary_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "annual_leave_summary", "total": len(rows), "records": rows}
+
+
+# ── 3. Lateness Report ───────────────────────────────────────────────────────
+
+@router.get("/lateness")
+async def lateness_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id, "leave_type": "lateness"}
+    query.update(_date_filter(date_from, date_to, "start_date"))
+    records = await db.leave_requests.find(query, {"_id": 0}).sort("start_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name"), r.get("start_date"), r.get("duration_minutes", ""), r.get("notes", "")] for r in records]
+        return _csv_response(rows, ["Employee", "Date", "Minutes Late", "Notes"], f"lateness_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "lateness", "total": len(records), "records": records}
+
+
+# ── 4. Sickness Report ───────────────────────────────────────────────────────
+
+@router.get("/sickness")
+async def sickness_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id, "leave_type": {"$in": ["sick", "sickness", "medical"]}}
+    query.update(_date_filter(date_from, date_to, "start_date"))
+    records = await db.leave_requests.find(query, {"_id": 0}).sort("start_date", -1).to_list(10000)
+    # Calculate Bradford Factor per employee (S² × D)
+    by_emp: dict = {}
+    for r in records:
+        eid = r.get("employee_id", "")
+        if eid not in by_emp:
+            by_emp[eid] = {"name": r.get("employee_name", ""), "spells": 0, "days": 0}
+        by_emp[eid]["spells"] += 1
+        by_emp[eid]["days"] += r.get("days", 1)
+    summary = [{"employee": v["name"], "spells": v["spells"], "total_days": v["days"], "bradford_factor": v["spells"] ** 2 * v["days"]} for v in by_emp.values()]
+    if fmt == "csv":
+        rows = [[s["employee"], s["spells"], s["total_days"], s["bradford_factor"]] for s in summary]
+        return _csv_response(rows, ["Employee", "Sickness Spells", "Total Days", "Bradford Factor"], f"sickness_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "sickness", "summary": summary, "records": records}
+
+
+# ── 5. Employee Details Report ───────────────────────────────────────────────
+
+@router.get("/employee-details")
+async def employee_details_report(employee_id: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id}
+    if employee_id:
+        query["employee_id"] = employee_id
+    employees = await db.employees.find(query, {"_id": 0, "password_hash": 0}).to_list(1000)
+    if fmt == "csv":
+        rows = [[e.get("first_name"), e.get("last_name"), e.get("email"), e.get("job_title"), e.get("department"), e.get("employment_type"), e.get("start_date"), e.get("salary"), e.get("ni_number"), e.get("status")] for e in employees]
+        return _csv_response(rows, ["First Name", "Last Name", "Email", "Job Title", "Department", "Contract Type", "Start Date", "Salary", "NI Number", "Status"], f"employee_details_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "employee_details", "total": len(employees), "records": employees}
+
+
+# ── 6. Employee Information Report (summary) ─────────────────────────────────
+
+@router.get("/employee-information")
+async def employee_information_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    employees = await db.employees.find({"company_id": user.company_id}, {"_id": 0, "first_name": 1, "last_name": 1, "email": 1, "job_title": 1, "department": 1, "start_date": 1, "employment_type": 1, "status": 1}).to_list(1000)
+    if fmt == "csv":
+        rows = [[e.get("first_name"), e.get("last_name"), e.get("email"), e.get("job_title"), e.get("department"), e.get("start_date"), e.get("employment_type"), e.get("status")] for e in employees]
+        return _csv_response(rows, ["First Name", "Last Name", "Email", "Job Title", "Department", "Start Date", "Contract", "Status"], f"employee_information_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "employee_information", "total": len(employees), "records": employees}
+
+
+# ── 7. Length of Service Report ──────────────────────────────────────────────
+
+@router.get("/length-of-service")
+async def length_of_service_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    employees = await db.employees.find({"company_id": user.company_id, "status": {"$ne": "archived"}}, {"_id": 0}).to_list(1000)
+    today = datetime.now(timezone.utc).date()
+    rows = []
+    for e in employees:
+        sd = e.get("start_date")
+        if sd:
+            try:
+                start = datetime.fromisoformat(sd).date()
+                delta = today - start
+                years = delta.days // 365
+                months = (delta.days % 365) // 30
+                rows.append({"employee": f"{e.get('first_name')} {e.get('last_name')}", "start_date": sd, "years": years, "months": months, "total_days": delta.days, "department": e.get("department")})
+            except Exception:
+                pass
+    rows.sort(key=lambda x: x["total_days"], reverse=True)
+    if fmt == "csv":
+        return _csv_response([[r["employee"], r["start_date"], r["years"], r["months"], r["total_days"], r["department"]] for r in rows],
+                             ["Employee", "Start Date", "Years", "Months", "Total Days", "Department"],
+                             f"length_of_service_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "length_of_service", "total": len(rows), "records": rows}
+
+
+# ── 8. Overtime Report ───────────────────────────────────────────────────────
+
+@router.get("/overtime")
+async def overtime_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id, "leave_type": "overtime"}
+    query.update(_date_filter(date_from, date_to, "start_date"))
+    records = await db.leave_requests.find(query, {"_id": 0}).sort("start_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name"), r.get("start_date"), r.get("hours", ""), r.get("status"), r.get("notes", "")] for r in records]
+        return _csv_response(rows, ["Employee", "Date", "Hours", "Status", "Notes"], f"overtime_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "overtime", "total": len(records), "records": records}
+
+
+# ── 9. Payroll Exceptions Report ─────────────────────────────────────────────
+
+@router.get("/payroll-exceptions")
+async def payroll_exceptions_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    """Absences that affect payroll — sick pay, SSP, unpaid leave."""
+    query: dict = {"company_id": user.company_id, "leave_type": {"$in": ["sick", "sickness", "unpaid", "maternity", "paternity", "adoption"]}, "status": "approved"}
+    records = await db.leave_requests.find(query, {"_id": 0}).sort("start_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name"), r.get("leave_type"), r.get("start_date"), r.get("end_date"), r.get("days", ""), r.get("status")] for r in records]
+        return _csv_response(rows, ["Employee", "Absence Type", "Start", "End", "Days", "Status"], f"payroll_exceptions_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "payroll_exceptions", "total": len(records), "records": records}
+
+
+# ── 10. Turnover & Retention Report ─────────────────────────────────────────
+
+@router.get("/turnover-retention")
+async def turnover_retention_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id, "status": "archived"}
+    query.update(_date_filter(date_from, date_to, "termination_date"))
+    leavers = await db.employees.find(query, {"_id": 0}).to_list(1000)
+    total_active = await db.employees.count_documents({"company_id": user.company_id, "status": {"$nin": ["archived", "terminated"]}})
+    total_left = len(leavers)
+    turnover_rate = round((total_left / max(total_active + total_left, 1)) * 100, 1)
+    if fmt == "csv":
+        rows = [[e.get("first_name"), e.get("last_name"), e.get("job_title"), e.get("department"), e.get("start_date"), e.get("termination_date"), e.get("termination_reason", "")] for e in leavers]
+        return _csv_response(rows, ["First Name", "Last Name", "Job Title", "Department", "Start Date", "Left Date", "Reason"], f"turnover_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "turnover_retention", "total_leavers": total_left, "total_active": total_active, "turnover_rate_pct": turnover_rate, "records": leavers}
+
+
+# ── 11. Sensitive Documents (Expiry Tracking) ────────────────────────────────
+
+@router.get("/sensitive-documents")
+async def sensitive_documents_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    today = datetime.now(timezone.utc).date().isoformat()
+    in_30 = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+    in_90 = (datetime.now(timezone.utc) + timedelta(days=90)).date().isoformat()
+    docs = await db.documents.find({"company_id": user.company_id, "expiry_date": {"$ne": None}}, {"_id": 0}).sort("expiry_date", 1).to_list(5000)
+    enriched = []
+    for d in docs:
+        exp = d.get("expiry_date", "")
+        if exp:
+            if exp < today:
+                state = "expired"
+            elif exp <= in_30:
+                state = "expiring_soon_30d"
+            elif exp <= in_90:
+                state = "expiring_90d"
+            else:
+                state = "valid"
+        else:
+            state = "no_expiry"
+        enriched.append({**d, "expiry_state": state})
+    if fmt == "csv":
+        rows = [[d.get("employee_name", ""), d.get("file_name", d.get("name", "")), d.get("document_type", ""), d.get("expiry_date", ""), d.get("expiry_state")] for d in enriched]
+        return _csv_response(rows, ["Employee", "Document", "Type", "Expiry Date", "State"], f"sensitive_docs_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    expired = [d for d in enriched if d["expiry_state"] == "expired"]
+    expiring_30 = [d for d in enriched if d["expiry_state"] == "expiring_soon_30d"]
+    return {"report": "sensitive_documents", "total": len(enriched), "expired": len(expired), "expiring_30d": len(expiring_30), "records": enriched}
+
+
+# ── 12. Working Status Report ────────────────────────────────────────────────
+
+@router.get("/working-status")
+async def working_status_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    employees = await db.employees.find({"company_id": user.company_id, "status": {"$ne": "archived"}}, {"_id": 0, "first_name": 1, "last_name": 1, "department": 1, "working_status": 1, "working_status_updated_at": 1}).to_list(1000)
+    rows = [{"employee": f"{e.get('first_name')} {e.get('last_name')}", "department": e.get("department"), "working_status": e.get("working_status", "Not Set"), "updated_at": e.get("working_status_updated_at", "")} for e in employees]
+    if fmt == "csv":
+        return _csv_response([[r["employee"], r["department"], r["working_status"], r["updated_at"]] for r in rows],
+                             ["Employee", "Department", "Working Status", "Last Updated"],
+                             f"working_status_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "working_status", "total": len(rows), "records": rows}
+
+
+# ── 13. Timesheet / Blip Report ──────────────────────────────────────────────
+
+@router.get("/timesheet")
+async def timesheet_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id}
+    query.update(_date_filter(date_from, date_to, "clock_in_time"))
+    records = await db.timesheets.find(query, {"_id": 0}).sort("clock_in_time", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name"), r.get("clock_in_time", ""), r.get("clock_out_time", ""), r.get("total_hours", ""), r.get("location", ""), r.get("notes", "")] for r in records]
+        return _csv_response(rows, ["Employee", "Clock In", "Clock Out", "Total Hours", "Location", "Notes"], f"timesheet_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "timesheet", "total": len(records), "records": records}
+
+
+# ── 14. Rota / Shifts Report ─────────────────────────────────────────────────
+
+@router.get("/rota")
+async def rota_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id}
+    query.update(_date_filter(date_from, date_to, "shift_date"))
+    shifts = await db.shifts.find(query, {"_id": 0}).sort("shift_date", 1).to_list(10000)
+    if fmt == "csv":
+        rows = [[s.get("employee_name", ""), s.get("shift_date"), s.get("start_time"), s.get("end_time"), s.get("hours", ""), s.get("location", "")] for s in shifts]
+        return _csv_response(rows, ["Employee", "Date", "Start", "End", "Hours", "Location"], f"rota_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "rota", "total": len(shifts), "records": shifts}
+
+
+# ── 15. Training / E-Learning Report ────────────────────────────────────────
+
+@router.get("/training")
+async def training_report(fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    records = await db.training_records.find({"company_id": user.company_id}, {"_id": 0}).sort("completion_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[r.get("employee_name", ""), r.get("course_title", ""), r.get("status"), r.get("completion_date", ""), r.get("certificate_url", "")] for r in records]
+        return _csv_response(rows, ["Employee", "Course", "Status", "Completion Date", "Certificate"], f"training_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "training", "total": len(records), "records": records}
+
+
+# ── 16. Expenses Report ──────────────────────────────────────────────────────
+
+@router.get("/expenses")
+async def expenses_report(date_from: Optional[str] = None, date_to: Optional[str] = None, fmt: str = "json", user: CurrentUser = Depends(require_manager)):
+    query: dict = {"company_id": user.company_id}
+    query.update(_date_filter(date_from, date_to, "expense_date"))
+    claims = await db.expense_claims.find(query, {"_id": 0}).sort("expense_date", -1).to_list(10000)
+    if fmt == "csv":
+        rows = [[c.get("employee_name"), c.get("category"), c.get("expense_date"), c.get("amount"), c.get("currency", "GBP"), c.get("status"), c.get("description", "")] for c in claims]
+        return _csv_response(rows, ["Employee", "Category", "Date", "Amount", "Currency", "Status", "Description"], f"expenses_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+    return {"report": "expenses", "total": len(claims), "records": claims}
+
+
+# ── Report index ─────────────────────────────────────────────────────────────
+
+@router.get("/index")
+async def report_index(_: CurrentUser = Depends(require_manager)):
+    return {
+        "reports": [
+            {"key": "absence",             "label": "Absence Report",                "description": "All absences by type, employee, and date range"},
+            {"key": "annual-leave-summary","label": "Annual Leave Summary",           "description": "Entitlement, taken, pending, remaining per employee"},
+            {"key": "lateness",            "label": "Lateness Report",               "description": "Late arrivals and duration"},
+            {"key": "sickness",            "label": "Sickness Report",               "description": "Sickness spells, total days, Bradford Factor"},
+            {"key": "employee-details",    "label": "Employee Details Report",        "description": "Full employee data export"},
+            {"key": "employee-information","label": "Employee Information Report",    "description": "Summary of all employee contact and contract info"},
+            {"key": "length-of-service",   "label": "Length of Service Report",      "description": "Tenure calculated for all employees"},
+            {"key": "overtime",            "label": "Overtime Report",               "description": "Pending and approved overtime requests"},
+            {"key": "payroll-exceptions",  "label": "Payroll Exceptions Report",     "description": "Absence data formatted for payroll"},
+            {"key": "turnover-retention",  "label": "Turnover & Retention Report",   "description": "Leavers and turnover rate"},
+            {"key": "sensitive-documents", "label": "Sensitive Documents Report",    "description": "Document expiry tracking (passports, visas, etc.)"},
+            {"key": "working-status",      "label": "Working Status Report",         "description": "Who is working where today"},
+            {"key": "timesheet",           "label": "Timesheet Report",              "description": "Clock-in/out data and hours worked"},
+            {"key": "rota",                "label": "Rota Report",                   "description": "Scheduled shifts and hours per employee"},
+            {"key": "training",            "label": "Training Report",               "description": "Course completions and mandatory training status"},
+            {"key": "expenses",            "label": "Expenses Report",               "description": "Expense claims by employee and category"},
+        ]
+    }

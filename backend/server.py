@@ -3337,6 +3337,12 @@ try:
     from routes.hr_analytics import router as hr_analytics_router
     from routes.dpo import router as dpo_router
     from routes.platform_mgmt import router as platform_mgmt_router
+    from routes.expenses import router as expenses_router
+    from routes.recruitment import router as recruitment_router
+    from routes.reports import router as reports_router
+    api_router.include_router(expenses_router)
+    api_router.include_router(recruitment_router)
+    api_router.include_router(reports_router)
     api_router.include_router(hmrc_router)
     api_router.include_router(self_service_router)
     api_router.include_router(rti_sync_router)
