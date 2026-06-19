@@ -172,6 +172,38 @@ export default function HMRCDashboard() {
     }
   };
 
+  const changeRtiMode = async (mode) => {
+    if (mode === rtiConfig?.rti_mode) return;
+    if (mode === 'production') {
+      const checklist = rtiConfig?.go_live_checklist || {};
+      const incomplete = Object.keys(GO_LIVE_CHECKLIST_LABELS).filter(k => !checklist[k]);
+      if (incomplete.length > 0) {
+        toast.error(`Complete all ${incomplete.length} checklist items before going live`);
+        return;
+      }
+    }
+    setRtiConfigSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/hmrc/rti-config`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rti_mode: mode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRtiConfig(prev => ({ ...prev, rti_mode: mode }));
+        const labels = { paused: 'Demo Mode', sandbox: 'HMRC Sandbox', production: 'Live Production' };
+        toast.success(`Switched to ${labels[mode] || mode}`);
+      } else {
+        toast.error(data.detail || 'Cannot switch mode');
+      }
+    } catch {
+      toast.error('Error switching mode');
+    } finally {
+      setRtiConfigSaving(false);
+    }
+  };
+
   const switchToProduction = async () => {
     const checklist = rtiConfig?.go_live_checklist || {};
     const incompleteRequired = Object.keys(GO_LIVE_CHECKLIST_LABELS).filter(k => !checklist[k]);
@@ -413,13 +445,24 @@ export default function HMRCDashboard() {
             RTI submissions will be sent to HMRC live systems. Ensure all data is accurate before submitting.
           </AlertDescription>
         </Alert>
-      ) : (
+      ) : rtiConfig?.rti_mode === 'sandbox' ? (
         <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
           <Shield className="h-4 w-4 text-amber-600" />
           <AlertTitle className="text-amber-800 dark:text-amber-200">Sandbox Mode Active</AlertTitle>
           <AlertDescription className="text-amber-700 dark:text-amber-300 flex items-center justify-between flex-wrap gap-2">
             <span>All submissions are sent to HMRC's test environment. Complete the go-live checklist to switch to production.</span>
             <Button variant="outline" size="sm" className="border-amber-400 text-amber-700" onClick={() => setShowRtiConfig(v => !v)}>
+              <Settings className="h-3 w-3 mr-1" /> Configure RTI
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+          <Shield className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-800 dark:text-blue-200">HMRC-Ready — Awaiting Production Approval</AlertTitle>
+          <AlertDescription className="text-blue-700 dark:text-blue-300 flex items-center justify-between flex-wrap gap-2">
+            <span>Submissions are queued and will not be sent until HMRC production credentials are configured.</span>
+            <Button variant="outline" size="sm" className="border-blue-400 text-blue-700" onClick={() => setShowRtiConfig(v => !v)}>
               <Settings className="h-3 w-3 mr-1" /> Configure RTI
             </Button>
           </AlertDescription>
@@ -441,6 +484,37 @@ export default function HMRCDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Submission Mode Selector */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Submission Mode</h4>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'paused', label: 'Demo Mode', desc: 'Submissions queued — nothing sent to HMRC' },
+                  { value: 'sandbox', label: 'HMRC Sandbox', desc: 'Test submissions to HMRC test endpoint' },
+                  { value: 'production', label: 'Live Production', desc: 'Real submissions — requires go-live checklist' },
+                ].map(opt => {
+                  const active = rtiConfig?.rti_mode === opt.value;
+                  const colorMap = {
+                    paused: active ? 'bg-blue-50 border-blue-500 text-blue-800 dark:bg-blue-950 dark:border-blue-400 dark:text-blue-200' : 'border-border text-muted-foreground hover:border-blue-300',
+                    sandbox: active ? 'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-950 dark:border-amber-400 dark:text-amber-200' : 'border-border text-muted-foreground hover:border-amber-300',
+                    production: active ? 'bg-rose-50 border-rose-500 text-rose-800 dark:bg-rose-950 dark:border-rose-400 dark:text-rose-200' : 'border-border text-muted-foreground hover:border-rose-300',
+                  };
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => changeRtiMode(opt.value)}
+                      disabled={rtiConfigSaving}
+                      className={`relative flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-colors ${colorMap[opt.value]} disabled:opacity-60`}
+                    >
+                      <span className="text-xs font-semibold">{opt.label}</span>
+                      <span className="text-xs leading-tight opacity-75">{opt.desc}</span>
+                      {active && <CheckCircle className="absolute top-2 right-2 h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Gateway credentials */}
             <div className="space-y-3">
               <h4 className="font-medium text-sm">Government Gateway Credentials</h4>

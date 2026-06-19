@@ -322,16 +322,21 @@ create table if not exists documents (
     company_id      text not null,
     employee_id     text,
     uploaded_by     text,
+    created_by      text,
     name            text,
     type            text,
+    doc_type        text,
     category        text,
+    content         text,
     file_url        text,
     file_size       int,
     mime_type       text,
     description     text,
+    status          text default 'draft',
     tags            jsonb default '[]',
     expires_at      timestamptz,
-    created_at      timestamptz default now()
+    created_at      timestamptz default now(),
+    updated_at      timestamptz default now()
 );
 create index if not exists documents_company_id_idx on documents(company_id);
 create index if not exists documents_employee_id_idx on documents(employee_id);
@@ -715,14 +720,27 @@ create table if not exists rotas (
 -- er_cases
 -- ---------------------------------------------------------------------------
 create table if not exists er_cases (
-    record_id       text primary key,
+    case_id         text primary key,
+    case_number     text,
     company_id      text,
     employee_id     text,
     case_type       text,
+    title           text,
     description     text,
+    severity        text,
+    incident_date   text,
+    raised_by       text,
+    confidential    boolean default true,
     status          text default 'open',
+    outcome         text,
+    hearing_date    text,
+    notes           text,
+    events          jsonb default '[]',
+    documents       jsonb default '[]',
     assigned_to     text,
     resolution      text,
+    created_by      text,
+    created_by_name text,
     created_at      timestamptz default now(),
     updated_at      timestamptz default now()
 );
@@ -1312,3 +1330,132 @@ create table if not exists user_permissions (
     created_at      timestamptz default now()
 );
 create unique index if not exists user_permissions_unique_idx on user_permissions(company_id, user_id, permission_key);
+
+-- ===========================================================================
+-- RECRUITMENT MODULE
+-- ===========================================================================
+
+create table if not exists recruitment_jobs (
+    job_id          text primary key,
+    company_id      text not null,
+    title           text,
+    department      text,
+    location        text,
+    contract_type   text,
+    salary_min      numeric,
+    salary_max      numeric,
+    salary_range    text,
+    closing_date    text,
+    description     text,
+    requirements    text,
+    status          text default 'open',
+    created_by      text,
+    created_at      timestamptz default now(),
+    updated_at      timestamptz default now()
+);
+create index if not exists recruitment_jobs_company_id_idx on recruitment_jobs(company_id);
+create index if not exists recruitment_jobs_status_idx on recruitment_jobs(status);
+
+create table if not exists recruitment_applicants (
+    applicant_id    text primary key,
+    job_id          text,
+    company_id      text not null,
+    name            text,
+    email           text,
+    phone           text,
+    cv_url          text,
+    cover_letter    text,
+    stage           text default 'applied',
+    rating          int,
+    notes           text,
+    offer_sent      boolean default false,
+    hired           boolean default false,
+    created_at      timestamptz default now(),
+    updated_at      timestamptz default now()
+);
+create index if not exists recruitment_applicants_job_id_idx on recruitment_applicants(job_id);
+create index if not exists recruitment_applicants_company_id_idx on recruitment_applicants(company_id);
+
+-- ===========================================================================
+-- EXPENSES MODULE
+-- ===========================================================================
+
+create table if not exists expense_claims (
+    claim_id        text primary key,
+    company_id      text not null,
+    employee_id     text,
+    employee_name   text,
+    title           text,
+    category        text,
+    amount          numeric,
+    currency        text default 'GBP',
+    expense_date    text,
+    description     text,
+    receipt_url     text,
+    status          text default 'pending',
+    approved_by     text,
+    approved_at     timestamptz,
+    rejected_reason text,
+    paid_at         timestamptz,
+    created_at      timestamptz default now(),
+    updated_at      timestamptz default now()
+);
+create index if not exists expense_claims_company_id_idx on expense_claims(company_id);
+create index if not exists expense_claims_employee_id_idx on expense_claims(employee_id);
+create index if not exists expense_claims_status_idx on expense_claims(status);
+
+create table if not exists mileage_claims (
+    claim_id        text primary key,
+    company_id      text not null,
+    employee_id     text,
+    employee_name   text,
+    journey_date    text,
+    from_location   text,
+    to_location     text,
+    miles           numeric,
+    vehicle_type    text default 'car',
+    purpose         text,
+    rate            numeric,
+    amount          numeric,
+    total_miles_ytd numeric default 0,
+    status          text default 'pending',
+    approved_by     text,
+    approved_at     timestamptz,
+    created_at      timestamptz default now(),
+    updated_at      timestamptz default now()
+);
+create index if not exists mileage_claims_company_id_idx on mileage_claims(company_id);
+create index if not exists mileage_claims_employee_id_idx on mileage_claims(employee_id);
+
+-- ===========================================================================
+-- SAFE ALTER TABLE migrations — add columns that may be missing from earlier
+-- schema runs. These are all IF NOT EXISTS to be idempotent.
+-- ===========================================================================
+
+-- employees: wizard fields not in the original schema
+alter table if exists employees add column if not exists title             text;
+alter table if exists employees add column if not exists middle_name       text;
+alter table if exists employees add column if not exists working_pattern   text;
+alter table if exists employees add column if not exists hours_per_week    numeric;
+
+-- documents: columns used by the create-document route
+alter table if exists documents add column if not exists doc_type    text;
+alter table if exists documents add column if not exists created_by  text;
+alter table if exists documents add column if not exists content     text;
+alter table if exists documents add column if not exists status      text default 'draft';
+alter table if exists documents add column if not exists updated_at  timestamptz default now();
+
+-- er_cases: columns added after initial schema creation
+alter table if exists er_cases add column if not exists case_number     text;
+alter table if exists er_cases add column if not exists title            text;
+alter table if exists er_cases add column if not exists severity         text;
+alter table if exists er_cases add column if not exists incident_date    text;
+alter table if exists er_cases add column if not exists raised_by        text;
+alter table if exists er_cases add column if not exists confidential     boolean default true;
+alter table if exists er_cases add column if not exists outcome          text;
+alter table if exists er_cases add column if not exists hearing_date     text;
+alter table if exists er_cases add column if not exists notes            text;
+alter table if exists er_cases add column if not exists events           jsonb default '[]';
+alter table if exists er_cases add column if not exists documents        jsonb default '[]';
+alter table if exists er_cases add column if not exists created_by       text;
+alter table if exists er_cases add column if not exists created_by_name  text;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -41,6 +42,7 @@ const payrollSteps = [
 
 export default function PayrollPage() {
     const navigate = useNavigate();
+    const { token } = useAuth();
     const [payRuns, setPayRuns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -51,14 +53,16 @@ export default function PayrollPage() {
     });
     const [submitting, setSubmitting] = useState(false);
 
+    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
+
     useEffect(() => {
-        fetchPayRuns();
-    }, []);
+        if (token) fetchPayRuns();
+    }, [token]);
 
     const fetchPayRuns = async () => {
         try {
             const data = await requestOrDefault(
-                axios.get(`${API_URL}/api/payroll/runs`, { withCredentials: true }),
+                axios.get(`${API_URL}/api/payroll/runs`, authHeaders),
                 [],
                 'pay runs'
             );
@@ -72,7 +76,7 @@ export default function PayrollPage() {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const response = await axios.post(`${API_URL}/api/payroll/runs`, formData, { withCredentials: true });
+            const response = await axios.post(`${API_URL}/api/payroll/runs`, formData, authHeaders);
             toast.success('Pay run created successfully');
             setDialogOpen(false);
             setFormData({ period_start: '', period_end: '', pay_date: '' });

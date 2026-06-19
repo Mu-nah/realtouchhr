@@ -216,22 +216,67 @@ class Company(BaseModel):
 
 # Employee Models
 class EmployeeCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    # Step 1 — Personal
+    title: Optional[str] = None
     first_name: str
+    middle_name: Optional[str] = None
     last_name: str
+    preferred_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    gender: Optional[str] = None
+    ni_number: Optional[str] = None
+    nationality: Optional[str] = None
+    # Step 2 — Contact
     email: EmailStr
+    work_email: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[dict] = None
+    # Step 3 — Employment
     job_title: Optional[str] = None
     department: Optional[str] = None
+    work_location: Optional[str] = None
+    employment_type: Optional[str] = None
+    contract_type: Optional[str] = None
     start_date: Optional[str] = None
+    probation_end_date: Optional[str] = None
+    working_pattern: Optional[str] = None
+    hours_per_week: Optional[float] = None
+    notice_period: Optional[str] = None
+    # Step 4 — Payroll & Tax
+    payroll_status: Optional[str] = None
+    pay_frequency: Optional[str] = None
+    salary_type: Optional[str] = None
     salary: Optional[float] = None
-    ni_number: Optional[str] = None
     tax_code: Optional[str] = None
-    bank_account: Optional[str] = None
-    bank_sort_code: Optional[str] = None
+    ni_category: Optional[str] = None
     ni_letter: Optional[str] = None
-    immigration_status: Optional[dict] = None
     student_loan_plan: Optional[str] = None
     has_postgrad_loan: bool = False
+    starter_declaration: Optional[str] = None
+    auto_enrolment_status: Optional[str] = None
     pension_enrolled: bool = False
+    payroll_start_date: Optional[str] = None
+    # Step 5 — Bank
+    bank_name: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_sort_code: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    # Step 6 — Right to Work
+    right_to_work_status: Optional[str] = None
+    rtw_document_type: Optional[str] = None
+    rtw_check_date: Optional[str] = None
+    rtw_expiry_date: Optional[str] = None
+    rtw_followup_date: Optional[str] = None
+    is_sponsored_worker: bool = False
+    cos_number: Optional[str] = None
+    visa_type: Optional[str] = None
+    visa_expiry_date: Optional[str] = None
+    # Step 7 — Emergency Contact
+    emergency_contact: Optional[dict] = None
+    # Legacy / misc
+    immigration_status: Optional[dict] = None
 
 class Employee(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -293,12 +338,12 @@ class Document(BaseModel):
     company_id: str
     employee_id: Optional[str] = None
     name: str
-    doc_type: str
+    doc_type: Optional[str] = None
     content: Optional[str] = None
     status: str = "draft"
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 # Shift/Rota Models
 class ShiftCreate(BaseModel):
@@ -1009,27 +1054,68 @@ async def create_employee(data: EmployeeCreate, user: User = Depends(get_current
     employee_doc = {
         "employee_id": employee_id,
         "company_id": user.company_id,
+        # Personal
+        "title": data.title,
         "first_name": data.first_name,
+        "middle_name": data.middle_name,
         "last_name": data.last_name,
+        "preferred_name": data.preferred_name,
+        "date_of_birth": data.date_of_birth,
+        "gender": data.gender,
+        "ni_number": data.ni_number,
+        "nationality": data.nationality,
+        # Contact
         "email": data.email,
+        "work_email": data.work_email,
+        "mobile_phone": data.mobile_phone,
+        "phone": data.phone,
+        "address": data.address or {},
+        # Employment
         "job_title": data.job_title,
         "department": data.department,
+        "work_location": data.work_location,
+        "employment_type": data.employment_type,
+        "contract_type": data.contract_type,
         "start_date": data.start_date,
+        "probation_end_date": data.probation_end_date,
+        "working_pattern": data.working_pattern,
+        "notice_period": data.notice_period,
+        # Payroll & Tax
+        "payroll_status": data.payroll_status or "active",
+        "pay_frequency": data.pay_frequency or "monthly",
+        "salary_type": data.salary_type or "annual",
         "salary": data.salary,
-        "ni_number": data.ni_number,
         "tax_code": data.tax_code,
+        "ni_category": data.ni_category or data.ni_letter,
+        "student_loan": data.student_loan_plan,
+        "postgraduate_loan": data.has_postgrad_loan,
+        "starter_declaration": data.starter_declaration,
+        "auto_enrolment_status": data.auto_enrolment_status,
+        "pension_enrolled": data.pension_enrolled,
+        "payroll_start_date": data.payroll_start_date,
+        # Bank
+        "bank_name": data.bank_name,
         "bank_account": data.bank_account,
         "bank_sort_code": data.bank_sort_code,
-        "ni_letter": data.ni_letter,
-        "immigration_status": data.immigration_status,
-        "student_loan_plan": data.student_loan_plan,
-        "has_postgrad_loan": data.has_postgrad_loan,
-        "pension_enrolled": data.pension_enrolled,
+        "bank_account_holder": data.bank_account_holder,
+        # Right to Work
+        "right_to_work_status": data.right_to_work_status,
+        "rtw_document_type": data.rtw_document_type,
+        "rtw_check_date": data.rtw_check_date,
+        "rtw_expiry_date": data.rtw_expiry_date,
+        "rtw_followup_date": data.rtw_followup_date,
+        "is_sponsored_worker": data.is_sponsored_worker,
+        "cos_number": data.cos_number,
+        "visa_type": data.visa_type,
+        "visa_expiry_date": data.visa_expiry_date,
+        # Emergency Contact
+        "emergency_contact": data.emergency_contact or {},
+        # Status
         "status": "active",
         "compliance_score": compliance_score,
         "compliance_issues": compliance_issues,
         "created_at": now.isoformat(),
-        "updated_at": now.isoformat()
+        "updated_at": now.isoformat(),
     }
     await db.employees.insert_one(employee_doc)
     

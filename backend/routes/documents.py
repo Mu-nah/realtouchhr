@@ -36,12 +36,12 @@ class Document(BaseModel):
     company_id: str
     employee_id: Optional[str] = None
     name: str
-    doc_type: str
+    doc_type: Optional[str] = None
     content: Optional[str] = None
     status: str = "draft"
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class CurrentUser(BaseModel):

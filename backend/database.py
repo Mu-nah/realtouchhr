@@ -32,17 +32,29 @@ def _get_client():
         # Load fresh from .env so changes are picked up without restarting
         load_dotenv(ROOT_DIR / ".env", override=True)
         from supabase import create_client
+        try:
+            from supabase import ClientOptions
+            options = ClientOptions(postgrest_client_timeout=15, storage_client_timeout=15)
+        except (ImportError, TypeError):
+            options = None
         url = os.environ.get("SUPABASE_URL", "")
         key = os.environ.get("SUPABASE_SERVICE_KEY", "")
         if not url or not key:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in backend/.env")
-        _client = create_client(url, key)
+        _client = create_client(url, key, **({"options": options} if options else {}))
     return _client
 
 
-async def _run(fn):
+async def _run(fn, timeout: float = 20.0):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, fn)
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(_executor, fn),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Supabase operation timed out after %.0fs", timeout)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +171,8 @@ class Cursor:
                     return []
                 raise
 
-        return await _run(_fetch)
+        result = await _run(_fetch)
+        return result if result is not None else []
 
     def __aiter__(self):
         return self._aiter()
@@ -517,7 +530,8 @@ class Collection:
                     return 0
                 raise
 
-        return await _run(_count)
+        result = await _run(_count)
+        return result if result is not None else 0
 
     async def estimated_document_count(self) -> int:
         return await self.count_documents()

@@ -1117,8 +1117,8 @@ async def update_rti_config(body: RTIConfigUpdate, user: User = Depends(_require
     updates: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
     if body.rti_mode is not None:
-        if body.rti_mode not in ("sandbox", "production"):
-            raise HTTPException(status_code=400, detail="rti_mode must be 'sandbox' or 'production'")
+        if body.rti_mode not in ("sandbox", "production", "paused"):
+            raise HTTPException(status_code=400, detail="rti_mode must be 'sandbox', 'production', or 'paused'")
         if body.rti_mode == "production":
             required_done = all(
                 checklist_state.get(i["key"])

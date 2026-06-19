@@ -129,11 +129,23 @@ async def get_billing_info(user: User = Depends(require_owner)):
     """
     if not user.company_id:
         raise HTTPException(status_code=400, detail="No company setup")
-    
-    from services.payment_service import payment_service
-    
-    billing = await payment_service.get_company_billing(user.company_id)
-    return billing
+
+    try:
+        from services.payment_service import payment_service, SUBSCRIPTION_PLANS, ADDONS
+        billing = await payment_service.get_company_billing(user.company_id)
+        return billing
+    except Exception as exc:
+        logger.warning("Billing info fetch failed for %s: %s", user.company_id, exc)
+        from services.payment_service import SUBSCRIPTION_PLANS, ADDONS
+        return {
+            "company_id": user.company_id,
+            "current_plan": None,
+            "subscription_active": False,
+            "employee_limit": 10,
+            "transactions": [],
+            "available_plans": SUBSCRIPTION_PLANS,
+            "available_addons": ADDONS,
+        }
 
 
 @router.post("/checkout/subscription")

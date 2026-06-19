@@ -697,17 +697,23 @@ class PaymentService:
     
     async def get_company_billing(self, company_id: str) -> Dict[str, Any]:
         """Get company billing information and transaction history"""
-        company = await db.companies.find_one(
-            {"company_id": company_id},
-            {"_id": 0, "subscription_plan": 1, "subscription_name": 1, 
-             "employee_limit": 1, "subscription_active": 1, "subscription_updated_at": 1}
-        )
-        
-        transactions = await db.payment_transactions.find(
-            {"company_id": company_id},
-            {"_id": 0}
-        ).sort("created_at", -1).limit(20).to_list(20)
-        
+        try:
+            company = await db.companies.find_one(
+                {"company_id": company_id},
+                {"_id": 0, "subscription_plan": 1, "subscription_name": 1,
+                 "employee_limit": 1, "subscription_active": 1, "subscription_updated_at": 1}
+            )
+        except Exception:
+            company = None
+
+        try:
+            transactions = await db.payment_transactions.find(
+                {"company_id": company_id},
+                {"_id": 0}
+            ).sort("created_at", -1).limit(20).to_list(20)
+        except Exception:
+            transactions = []
+
         current_plan = None
         if company and company.get("subscription_plan"):
             plan_id = company.get("subscription_plan")
@@ -715,7 +721,7 @@ class PaymentService:
                 "id": plan_id,
                 **SUBSCRIPTION_PLANS.get(plan_id, {})
             }
-        
+
         return {
             "company_id": company_id,
             "current_plan": current_plan,
