@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -18,9 +19,9 @@ import {
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
-const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, withCredentials: true });
 
 export default function EmployeeRelationsPage() {
+    const { token } = useAuth();
     const [employees, setEmployees] = useState([]);
     const [cases, setCases] = useState([]);
     const [types, setTypes] = useState({ case_types: [], statuses: [], severities: [] });
@@ -33,26 +34,33 @@ export default function EmployeeRelationsPage() {
     });
     const [error, setError] = useState(null);
 
+    const auth = () => ({ headers: { Authorization: `Bearer ${token}` }, withCredentials: true });
+
     const load = async () => {
-        try {
-            const [eRes, cRes, tRes] = await Promise.all([
-                axios.get(`${API_URL}/api/employees`, auth()),
-                axios.get(`${API_URL}/api/cases`, auth()),
-                axios.get(`${API_URL}/api/cases/types`, auth()),
-            ]);
-            setEmployees(eRes.data || []);
-            setCases(cRes.data.cases || []);
-            setTypes(tRes.data || {});
-            setError(null);
-        } catch (err) {
-            const detail = err.response?.data?.detail || 'Failed to load cases';
-            if (err.response?.status === 403) setError(detail);
-            else toast.error(detail);
-        } finally {
-            setLoading(false);
+        if (!token) return;
+        setLoading(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [eRes, cRes, tRes] = await Promise.allSettled([
+            axios.get(`${API_URL}/api/employees`, { headers, withCredentials: true }),
+            axios.get(`${API_URL}/api/cases`, { headers, withCredentials: true }),
+            axios.get(`${API_URL}/api/cases/types`, { headers, withCredentials: true }),
+        ]);
+
+        if (eRes.status === 'fulfilled') setEmployees(eRes.value.data || []);
+        if (cRes.status === 'fulfilled') {
+            const d = cRes.value.data;
+            setCases(d.cases || []);
+            if (d.error === 'access_denied') setError(d.detail || 'Access restricted');
+        } else if (cRes.reason?.response?.status === 403) {
+            setError(cRes.reason.response.data?.detail || 'HR / Admin access required');
         }
+        if (tRes.status === 'fulfilled') setTypes(tRes.value.data || {});
+
+        setLoading(false);
     };
-    useEffect(() => { load(); }, []);
+
+    useEffect(() => { load(); }, [token]);
 
     const create = async (e) => {
         e.preventDefault();

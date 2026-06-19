@@ -127,16 +127,18 @@ async def seed_demo(user: CurrentUser = Depends(get_current_user)):
         net = monthly - tax - ni - pension
         total_gross += monthly; total_tax += tax; total_ni += ni; total_net += net
         payslips_to_insert.append({
+            "payslip_id": f"ps_{uuid.uuid4().hex[:12]}",
             "payrun_id": payrun_id,
+            "company_id": company_id,
             "employee_id": emp_id,
             "employee_name": f"{spec['first_name']} {spec['last_name']}",
             "gross_pay": round(monthly, 2),
-            "tax_deduction": round(tax, 2),
-            "ni_deduction": round(ni, 2),
-            "pension_deduction": round(pension, 2),
-            "other_deductions": 0,
+            "income_tax": round(tax, 2),
+            "national_insurance": round(ni, 2),
+            "pension_ee": round(pension, 2),
             "net_pay": round(net, 2),
-            "overtime_pay": 0,
+            "status": "draft",
+            "created_at": now.isoformat(),
             "demo_seeded": True,
         })
 
@@ -268,9 +270,8 @@ async def create_sandbox_account():
     fake_user = CurrentUser(user_id=user_id, email=email, name="Sandbox Visitor", role="owner", company_id=company_id)
     try:
         await seed_demo(user=fake_user)
-    except HTTPException:
-        # seed_demo raises HTTPException only if no company_id, but we have one
-        raise
+    except Exception as exc:
+        logger.warning("seed_demo failed for sandbox %s: %s", company_id, exc)
 
     return {
         "token": token,
