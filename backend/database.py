@@ -326,6 +326,10 @@ class Collection:
                         return
                     if "duplicate" in msg_lower or "unique" in msg_lower or "23505" in msg_lower:
                         return  # ignore duplicates
+                    # Swallow transient connection errors (cold-start / HTTP2 drops)
+                    if any(x in msg for x in ("RemoteProtocolError", "ConnectionTerminated", "ConnectionError", "h2")):
+                        logger.warning("Supabase connection dropped on %s insert, returning", table)
+                        return
                     # Strip the offending column and retry
                     m = re.search(
                         r"could not find the [\"'](\w+)[\"'] column"

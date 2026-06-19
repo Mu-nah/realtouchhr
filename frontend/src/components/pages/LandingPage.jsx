@@ -19,24 +19,30 @@ export default function LandingPage() {
     const { refresh } = useAuth();
     const [loading, setLoading] = useState(false);
 
-    const startSandboxDemo = async () => {
+    const startSandboxDemo = async (attempt = 0) => {
         setLoading(true);
         try {
             const res = await axios.post(`${API_URL}/api/demo/sandbox`, {}, {
                 withCredentials: true,
+                timeout: 30000,
             });
             const { token, tour_steps } = res.data;
-            // Persist sandbox token
             localStorage.setItem('token', token);
-            // Persist tour state
             localStorage.setItem('demo_tour_steps', JSON.stringify(tour_steps));
             localStorage.setItem('demo_tour_active', 'true');
-            // Refresh auth context
             await refresh?.();
             toast.success('Demo ready. Starting your tour.');
-            // Hard navigation so AuthContext re-checks /api/auth/me with fresh token
             window.location.href = '/dashboard';
         } catch (err) {
+            if (attempt < 1) {
+                // Auto-retry once — first request wakes a cold server
+                toast.loading('Starting demo…', { id: 'demo-retry' });
+                setTimeout(() => {
+                    toast.dismiss('demo-retry');
+                    startSandboxDemo(attempt + 1);
+                }, 3000);
+                return;
+            }
             toast.error(err.response?.data?.detail || 'Could not launch demo. Try again.');
             setLoading(false);
         }
