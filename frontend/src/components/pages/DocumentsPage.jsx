@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -44,6 +45,8 @@ const docTypes = [
 ];
 
 export default function DocumentsPage() {
+    const { token } = useAuth();
+    const authHeaders = { headers: { Authorization: `Bearer ${token}` }, withCredentials: true };
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -61,7 +64,7 @@ export default function DocumentsPage() {
     const fetchDocuments = async () => {
         try {
             const data = await requestOrDefault(
-                axios.get(`${API_URL}/api/documents`, { withCredentials: true }),
+                axios.get(`${API_URL}/api/documents`, authHeaders),
                 [],
                 'documents'
             );
@@ -75,7 +78,7 @@ export default function DocumentsPage() {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await axios.post(`${API_URL}/api/documents`, formData, { withCredentials: true });
+            await axios.post(`${API_URL}/api/documents`, formData, authHeaders);
             toast.success('Document created successfully');
             setDialogOpen(false);
             setFormData({ name: '', doc_type: '', content: '' });

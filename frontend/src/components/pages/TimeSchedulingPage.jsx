@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -25,6 +27,7 @@ import {
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function TimeSchedulingPage() {
+  const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('clock');
   const [clockStatus, setClockStatus] = useState(null);
   const [shifts, setShifts] = useState([]);
@@ -33,6 +36,13 @@ export default function TimeSchedulingPage() {
   const [loading, setLoading] = useState(true);
   const [clockLoading, setClockLoading] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState(getWeekStart(new Date()));
+  const [now, setNow] = useState(new Date());
+
+  // Tick every second so clock display and elapsed time stay live
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   function getWeekStart(d) {
     const date = new Date(d);
@@ -49,7 +59,7 @@ export default function TimeSchedulingPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('token');
+      // token from useAuth
       const headers = { 'Authorization': `Bearer ${token}` };
 
       // Fetch clock status
@@ -96,7 +106,7 @@ export default function TimeSchedulingPage() {
   const handleClockIn = async () => {
     setClockLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      // token from useAuth
       
       // Get location if available
       let location = null;
@@ -124,10 +134,14 @@ export default function TimeSchedulingPage() {
       });
 
       if (response.ok) {
+        toast.success('Clocked in successfully');
         fetchData();
+      } else {
+        const err = await response.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to clock in');
       }
     } catch (error) {
-      console.error('Clock in error:', error);
+      toast.error('Clock in failed');
     } finally {
       setClockLoading(false);
     }
@@ -136,21 +150,20 @@ export default function TimeSchedulingPage() {
   const handleClockOut = async () => {
     setClockLoading(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${BACKEND_URL}/api/time/clock-out`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
-
       if (response.ok) {
+        toast.success('Clocked out — have a great rest of your day!');
         fetchData();
+      } else {
+        const err = await response.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to clock out');
       }
     } catch (error) {
-      console.error('Clock out error:', error);
+      toast.error('Clock out failed');
     } finally {
       setClockLoading(false);
     }
@@ -158,41 +171,35 @@ export default function TimeSchedulingPage() {
 
   const handleBreakStart = async () => {
     try {
-      const token = localStorage.getItem('token');
-      await fetch(`${BACKEND_URL}/api/time/break/start`, {
+      const res = await fetch(`${BACKEND_URL}/api/time/break/start`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      fetchData();
-    } catch (error) {
-      console.error('Break start error:', error);
-    }
+      if (res.ok) { toast.success('Break started'); fetchData(); }
+      else toast.error('Could not start break');
+    } catch { toast.error('Break start failed'); }
   };
 
   const handleBreakEnd = async () => {
     try {
-      const token = localStorage.getItem('token');
-      await fetch(`${BACKEND_URL}/api/time/break/end`, {
+      const res = await fetch(`${BACKEND_URL}/api/time/break/end`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      fetchData();
-    } catch (error) {
-      console.error('Break end error:', error);
-    }
+      if (res.ok) { toast.success('Break ended'); fetchData(); }
+      else toast.error('Could not end break');
+    } catch { toast.error('Break end failed'); }
   };
 
   const handleApproveTimesheet = async (timesheetId) => {
     try {
-      const token = localStorage.getItem('token');
-      await fetch(`${BACKEND_URL}/api/time/timesheets/${timesheetId}/approve`, {
+      const res = await fetch(`${BACKEND_URL}/api/time/timesheets/${timesheetId}/approve`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      fetchData();
-    } catch (error) {
-      console.error('Approve error:', error);
-    }
+      if (res.ok) { toast.success('Timesheet approved'); fetchData(); }
+      else toast.error('Could not approve timesheet');
+    } catch { toast.error('Approval failed'); }
   };
 
   const formatDuration = (minutes) => {
@@ -282,10 +289,10 @@ export default function TimeSchedulingPage() {
             <CardContent className="space-y-6">
               <div className="text-center">
                 <p className="text-5xl font-bold font-mono mb-4">
-                  {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </p>
                 <p className="text-muted-foreground">
-                  {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
               </div>
 
@@ -293,10 +300,12 @@ export default function TimeSchedulingPage() {
                 {getStatusBadge(clockStatus?.status)}
               </div>
 
-              {clockStatus?.status === 'clocked_in' && clockStatus?.duration_minutes && (
+              {clockStatus?.status === 'clocked_in' && clockStatus?.clocked_in_at && (
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Working for</p>
-                  <p className="text-2xl font-bold">{formatDuration(clockStatus.duration_minutes)}</p>
+                  <p className="text-2xl font-bold text-emerald-600">
+                    {formatDuration(Math.floor((now - new Date(clockStatus.clocked_in_at)) / 60000))}
+                  </p>
                 </div>
               )}
 
